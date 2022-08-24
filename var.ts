@@ -16,7 +16,7 @@ const VarEvent = function () {
   };
 };
 
-function _isVar(x: any): x is Var<any> {
+function _isVar(x: any): x is Var<any, any> {
   return exists(x?.value) && exists(x?.onChange);
 }
 
@@ -53,6 +53,7 @@ const Var = (function () {
       get onChange() {
         return funcs.onChange;
       },
+
       // Typescript doesn't yet suport write only
     } as P extends W
       ? {
@@ -89,11 +90,11 @@ const Var = (function () {
         funcs: VarFromFuncsParams<P, T>,
       ) => varFromFuncs<P, T>(funcs);
       returnObj.fromFuncs = variantFromFuncs;
-      returnObj.isThisType = function <P extends R | RW = R>(
-        x: any,
-      ): x is Var<P, T> {
-        return _isVar(x) && isThisType(x.value);
-      };
+      returnObj.isThisType = (x: any) =>
+        computed(
+          () => _isVar(x) && isThisType(x.value),
+          _isVar(x) ? [x.onChange] : [],
+        );
       returnObj.variant = staticMembers.variant;
       return returnObj as typeof returnObj &
         typeof staticMembers & { fromFuncs: typeof variantFromFuncs };
@@ -117,15 +118,74 @@ const computed = function <T = any>(
   compute: () => T,
   triggers: VarEvent[],
 ): Var<R, T> {
+  // Caching the value has significat performance beenfits
+  let cachedVal: T;
+  let haveCachedVal = false;
+  const tryCompute = function () {
+    try {
+      cachedVal = compute();
+      haveCachedVal = true;
+    } catch (e) {
+      console.log(e);
+    }
+  };
   const onChange = VarEvent();
+  onChange.addListener(tryCompute);
   for (const t of triggers) t.addListener(onChange.trigger);
   return Var.fromFuncs<R, T>({
-    read: compute,
+    read: function () {
+      if (!haveCachedVal) tryCompute();
+      return cachedVal;
+    },
     onChange: onChange,
   });
 };
 
-/*const ifEl = function <C extends Var<R, boolean> | boolean, T, F>(
+const and = function <
+  X extends Var<R, boolean> | boolean,
+  Y extends Var<R, boolean> | boolean,
+>(
+  x: X,
+  y: Y,
+): X extends Var<R, boolean>
+  ? Var<R, boolean>
+  : Y extends Var<R, boolean>
+  ? Var<R, boolean>
+  : boolean {
+  if (_isVar(x) && _isVar(y)) {
+    return computed(() => x.value && y.value, [x.onChange, y.onChange]) as any;
+  } else if (_isVar(x)) {
+    return computed(() => x.value && y, [x.onChange]) as any;
+  } else if (_isVar(y)) {
+    return computed(() => x && y.value, [y.onChange]) as any;
+  } else {
+    return (x && y) as any;
+  }
+};
+
+const or = function <
+  X extends Var<R, boolean> | boolean,
+  Y extends Var<R, boolean> | boolean,
+>(
+  x: X,
+  y: Y,
+): X extends Var<R, boolean>
+  ? Var<R, boolean>
+  : Y extends Var<R, boolean>
+  ? Var<R, boolean>
+  : boolean {
+  if (_isVar(x) && _isVar(y)) {
+    return computed(() => x.value || y.value, [x.onChange, y.onChange]) as any;
+  } else if (_isVar(x)) {
+    return computed(() => x.value || y, [x.onChange]) as any;
+  } else if (_isVar(y)) {
+    return computed(() => x || y.value, [y.onChange]) as any;
+  } else {
+    return (x || y) as any;
+  }
+};
+
+const ifel = function <C extends Var<R, boolean> | boolean, T, F>(
   condition: C,
   onTrue: T,
   onFalse: F,
@@ -140,9 +200,29 @@ const computed = function <T = any>(
   : C extends true
   ? T
   : F {
-  if (Var.isThisType(condition)) {
-    return onTrue;
+  if (_isVar(condition)) {
+    if (_isVar(onTrue) && _isVar(onFalse)) {
+      return computed(
+        () => (condition.value ? onTrue.value : onFalse.value),
+        [condition.onChange],
+      ) as any;
+    } else if (_isVar(onTrue)) {
+      return computed(
+        () => (condition.value ? onTrue.value : onFalse),
+        [condition.onChange],
+      ) as any;
+    } else if (_isVar(onFalse)) {
+      return computed(
+        () => (condition.value ? onTrue : onFalse.value),
+        [condition.onChange],
+      ) as any;
+    } else {
+      return computed(
+        () => (condition.value ? onTrue : onFalse),
+        [condition.onChange],
+      ) as any;
+    }
   } else {
     return (condition ? onTrue : onFalse) as any;
   }
-};*/
+};

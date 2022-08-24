@@ -199,11 +199,10 @@ type _WidgetStylePart = {
   preferParent?: { [key: string]: _WidgetCompilerStyleProp };
   preferChild?: { [key: string]: _WidgetCompilerStyleProp };
 };
-type _BasicWidgetCompilerStyleProp = string | number | boolean;
+type _BasicWidgetCompilerStyleProp = string | number | boolean | undefined;
 type _WidgetCompilerStyleProp =
   | Var<R, _BasicWidgetCompilerStyleProp>
-  | _BasicWidgetCompilerStyleProp
-  | undefined;
+  | _BasicWidgetCompilerStyleProp;
 
 /** @About Converts a widget to an html element along with some other stats. */
 _addNewContentCompiler({
@@ -426,9 +425,10 @@ const colors = readonlyObj({
 });
 type ImageRef = string;
 widgetStyleBuilders.push((params: { widget: Widget }) => {
-  const backgroundIsImage =
-    !Color.isThisType(params.widget.background) &&
-    params.widget.background[0] !== `#`;
+  const backgroundIsColor = or(
+    Color.isThisType(params.widget.background),
+    (params.widget.background as any)?.[0] === `#`,
+  );
   return {
     preferParent: {
       // Corner Radius
@@ -442,12 +442,18 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
       outlineOffset: `-` + numToStandardHtmlUnit(params.widget.outlineSize),
 
       // Background
-      backgroundColor: backgroundIsImage ? undefined : params.widget.background,
-      backgroundImage: backgroundIsImage
-        ? `url(${params.widget.background})`
-        : undefined,
-      backgroundPosition: backgroundIsImage ? `center` : undefined,
-      backgroundSize: backgroundIsImage ? `cover` : undefined,
+      backgroundColor: ifel(
+        backgroundIsColor,
+        params.widget.background,
+        undefined,
+      ),
+      backgroundImage: ifel(
+        backgroundIsColor,
+        undefined,
+        `url(${params.widget.background})`,
+      ),
+      backgroundPosition: ifel(backgroundIsColor, undefined, `center`),
+      backgroundSize: ifel(backgroundIsColor, undefined, `cover`),
       backgroundRepeat: `no-repeat`,
       backgroundAttachment: `local`,
 
