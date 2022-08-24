@@ -220,14 +220,44 @@ _addNewContentCompiler({
       startZIndex: params.startZIndex,
     });
 
+    // Create the html elements
+    //const scripts = [];
+    const newChildElement =
+      params.contents.contentAxis === axis.z
+        ? createHtmlElement({
+            tag: `div`,
+            style: {
+              flexGrow: 1,
+              alignSelf: `stretch`,
+              backgroundColor: `green`,
+            },
+            content: childrenInfo.htmlElements,
+          })
+        : undefined;
+    const newParentElement = createHtmlElement({
+      tag: params.contents.htmlTag,
+      content: exists(newChildElement)
+        ? [newChildElement]
+        : childrenInfo.htmlElements,
+    });
+    if (exists(params.contents.onTap)) {
+      newParentElement.onclick = params.contents.onTap;
+    }
+
     // Compile the styles
-    const scripts = [];
-    const shouldUseTwoElements = params.contents.contentAxis === axis.z;
-    const parentStyle: any = {};
-    const childStyle: any = {
-      flexGrow: 1,
-      alignSelf: `stretch`,
-      backgroundColor: `green`,
+    const setUpStyleProp = function (
+      key: string,
+      prop: _WidgetCompilerStyleProp,
+      htmlElement: HTMLElement,
+    ) {
+      if (Var.isThisType(prop)) {
+        prop.onChange.addListener(
+          () => ((htmlElement.style as any)[key] = prop.value),
+        );
+        (htmlElement.style as any)[key] = prop.value;
+      } else {
+        (htmlElement.style as any)[key] = prop;
+      }
     };
     for (const i in widgetStyleBuilders) {
       const newProps = widgetStyleBuilders[i]({
@@ -237,49 +267,26 @@ _addNewContentCompiler({
         startZIndex: params.startZIndex,
       });
       for (const key in newProps.preferParent) {
-        (parentStyle as any)[key] = (newProps.preferParent as any)[key];
+        setUpStyleProp(key, newProps.preferParent[key], newParentElement);
       }
       for (const key in newProps.preferChild) {
-        if (shouldUseTwoElements) {
-          (childStyle as any)[key] = (newProps.preferChild as any)[key];
-        } else {
-          (parentStyle as any)[key] = (newProps.preferChild as any)[key];
-        }
+        setUpStyleProp(
+          key,
+          newProps.preferChild[key],
+          exists(newChildElement) ? newChildElement : newParentElement,
+        );
       }
-      if (exists(newProps.scripts)) {
+      /*if (exists(newProps.scripts)) {
         for (const script of newProps.scripts) {
           scripts.push(script);
         }
-      }
+      }*/
     }
 
     // Compile the widget
-    const newParentElement = createHtmlElement({
-      tag: params.contents.htmlTag,
-      style: parentStyle,
-      content: [
-        createHtmlElement({
-          tag: `script`,
-          elementType: `text/javascript`,
-          content: document.createTextNode(``),
-        }),
-        ...(shouldUseTwoElements
-          ? [
-              createHtmlElement({
-                tag: `div`,
-                style: childStyle,
-                content: childrenInfo.htmlElements,
-              }),
-            ]
-          : childrenInfo.htmlElements),
-      ],
-    });
-    if (exists(params.contents.onTap)) {
-      newParentElement.onclick = params.contents.onTap;
-    }
-    for (const script of scripts) {
+    /*for (const script of scripts) {
       script(newParentElement);
-    }
+    }*/
     return {
       widthGrows: _getSizeGrows(params.contents.width, childrenInfo.widthGrows),
       heightGrows: _getSizeGrows(
@@ -422,17 +429,6 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
   const _isMaterialImage = (material: Material): material is ImageRef =>
     !Color.isThisType(material) && material[0] !== `#`;
   return {
-    scripts: Color.isThisType(params.widget.background)
-      ? [
-          (parent: HTMLElement) =>
-            (params.widget.background as Color).onChange.addListener(
-              () =>
-                (parent.style.backgroundColor = (
-                  params.widget.background as Color
-                ).value),
-            ),
-        ]
-      : undefined,
     preferParent: {
       // Corner Radius
       borderRadius: numToStandardHtmlUnit(params.widget.cornerRadius),
@@ -445,11 +441,9 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
       outlineOffset: `-` + numToStandardHtmlUnit(params.widget.outlineSize),
 
       // Background
-      backgroundColor: !_isMaterialImage(params.widget.background)
-        ? Color.isThisType(params.widget.background)
-          ? params.widget.background.value
-          : params.widget.background
-        : undefined,
+      backgroundColor: _isMaterialImage(params.widget.background)
+        ? undefined
+        : params.widget.background,
       backgroundImage: _isMaterialImage(params.widget.background)
         ? `url(${params.widget.background})`
         : undefined,
