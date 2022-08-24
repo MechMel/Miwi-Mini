@@ -120,7 +120,7 @@ interface Widget {
   background: Material;
   shadowSize: number;
   shadowDirection: Align;
-  onTap: () => void;
+  onTap: (() => void) | undefined;
   //interaction: { onTap: function() {}, onDoubleTap: function() {}, onLongPress: function() {}, }
   padding: Padding;
   contentAlign: Align;
@@ -176,6 +176,7 @@ function widgetTemplate<T extends Required<Omit<Widget, `toString`>>>(
       newWidget.contents = invocationContents;
     }
     newWidget.toString = function (): string {
+      // Maybe swap to <MiwiWidget>{...json}</MiwiWidget>
       return `$$#@%${JSON.stringify(newWidget)}%@#$$`;
     };
     return newWidget;
@@ -195,9 +196,14 @@ const widgetStyleBuilders: ((params: {
 }) => _WidgetStylePart)[] = [];
 type _WidgetStylePart = {
   scripts?: ((parent: HTMLElement) => void)[];
-  preferParent?: { [key: string]: string | number | boolean | undefined };
-  preferChild?: { [key: string]: string | number | boolean | undefined };
+  preferParent?: { [key: string]: _WidgetCompilerStyleProp };
+  preferChild?: { [key: string]: _WidgetCompilerStyleProp };
 };
+type _BasicWidgetCompilerStyleProp = string | number | boolean;
+type _WidgetCompilerStyleProp =
+  | Var<_BasicWidgetCompilerStyleProp>
+  | _BasicWidgetCompilerStyleProp
+  | undefined;
 
 /** @About Converts a widget to an html element along with some other stats. */
 _addNewContentCompiler({
@@ -268,7 +274,9 @@ _addNewContentCompiler({
           : childrenInfo.htmlElements),
       ],
     });
-    newParentElement.onclick = params.contents.onTap;
+    if (exists(params.contents.onTap)) {
+      newParentElement.onclick = params.contents.onTap;
+    }
     for (const script of scripts) {
       script(newParentElement);
     }
@@ -864,7 +872,7 @@ const _pageWidthVmin = 40;
 const _pageWidget = widgetTemplate({
   width: `100%`,
   height: `100%`,
-  onTap: () => {},
+  onTap: undefined,
   textSize: 2,
   textIsBold: true,
   textIsItalic: false,

@@ -61,7 +61,7 @@ const Var = (function () {
 
 // Because prettier doesn't like ReturnType<typeof Var<T>>
 class _VarWrapper<T> {
-  invoke<T>(_: T) {
+  invoke(_: T) {
     return Var(_);
   }
 }
