@@ -201,7 +201,7 @@ type _WidgetStylePart = {
 };
 type _BasicWidgetCompilerStyleProp = string | number | boolean;
 type _WidgetCompilerStyleProp =
-  | Var<_BasicWidgetCompilerStyleProp>
+  | Var<R, _BasicWidgetCompilerStyleProp>
   | _BasicWidgetCompilerStyleProp
   | undefined;
 
@@ -401,9 +401,9 @@ function numToStandardHtmlUnit(num: number) {
 
 // SECTION: Box Decoration
 /** @Note Describes the styling of the background of a widget. */
-type Material = Color | ColorLiteralRGB | ImageRef;
+type Material<P extends R | RW = R> = Color<P> | ColorLiteralRGB | ImageRef;
 // type HSV = `${number} ${number} ${number}`;
-type Color = ReturnType<typeof Color>;
+type Color<P extends R | RW> = Var<P, ReturnType<typeof Color>[`value`]>;
 const Color = Var.variant(function (v: any): v is ColorLiteralRGB {
   return typeof v === `string` && v.startsWith(`#`);
 });
@@ -426,8 +426,9 @@ const colors = readonlyObj({
 });
 type ImageRef = string;
 widgetStyleBuilders.push((params: { widget: Widget }) => {
-  const _isMaterialImage = (material: Material): material is ImageRef =>
-    !Color.isThisType(material) && material[0] !== `#`;
+  const backgroundIsImage =
+    !Color.isThisType(params.widget.background) &&
+    params.widget.background[0] !== `#`;
   return {
     preferParent: {
       // Corner Radius
@@ -441,18 +442,12 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
       outlineOffset: `-` + numToStandardHtmlUnit(params.widget.outlineSize),
 
       // Background
-      backgroundColor: _isMaterialImage(params.widget.background)
-        ? undefined
-        : params.widget.background,
-      backgroundImage: _isMaterialImage(params.widget.background)
+      backgroundColor: backgroundIsImage ? undefined : params.widget.background,
+      backgroundImage: backgroundIsImage
         ? `url(${params.widget.background})`
         : undefined,
-      backgroundPosition: _isMaterialImage(params.widget.background)
-        ? `center`
-        : undefined,
-      backgroundSize: _isMaterialImage(params.widget.background)
-        ? `cover`
-        : undefined,
+      backgroundPosition: backgroundIsImage ? `center` : undefined,
+      backgroundSize: backgroundIsImage ? `cover` : undefined,
       backgroundRepeat: `no-repeat`,
       backgroundAttachment: `local`,
 
