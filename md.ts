@@ -5,6 +5,7 @@
 const box = widgetTemplate({
   width: size.basedOnContents,
   height: size.basedOnContents,
+  onTap: () => {},
   cornerRadius: 0,
   outlineColor: colors.transparent,
   outlineSize: 0,
@@ -27,8 +28,9 @@ const box = widgetTemplate({
 
 /** @About A box is the simplest UI widget. */
 const pageBody = widgetTemplate({
-  width: size.basedOnContents,
-  height: size.basedOnContents,
+  width: size.grow,
+  height: size.grow,
+  onTap: () => {},
   cornerRadius: 0,
   outlineColor: colors.transparent,
   outlineSize: 0,
@@ -56,6 +58,7 @@ const pageBody = widgetTemplate({
 const card = widgetTemplate({
   width: size.grow,
   height: size.basedOnContents,
+  onTap: () => {},
   textSize: 1,
   textIsBold: false,
   textIsItalic: false,
@@ -82,6 +85,7 @@ const button = readonlyObj({
   solid: widgetTemplate({
     width: size.basedOnContents,
     height: size.basedOnContents,
+    onTap: () => {},
     textSize: 1,
     textIsBold: false,
     textIsItalic: false,
@@ -106,6 +110,7 @@ const button = readonlyObj({
   outlined: widgetTemplate({
     width: size.basedOnContents,
     height: size.basedOnContents,
+    onTap: () => {},
     textSize: 1,
     textIsBold: false,
     textIsItalic: false,
@@ -130,6 +135,7 @@ const button = readonlyObj({
   pill: widgetTemplate({
     width: size.basedOnContents,
     height: 2,
+    onTap: () => {},
     textSize: 1,
     textIsBold: false,
     textIsItalic: false,
@@ -154,6 +160,7 @@ const button = readonlyObj({
   round: widgetTemplate({
     width: 2,
     height: 2,
+    onTap: () => {},
     textSize: 1,
     textIsBold: false,
     textIsItalic: false,
@@ -179,6 +186,7 @@ const button = readonlyObj({
 const appBar = widgetTemplate({
   width: size.grow,
   height: size.basedOnContents,
+  onTap: () => {},
   textSize: 2,
   textIsBold: true,
   textIsItalic: false,

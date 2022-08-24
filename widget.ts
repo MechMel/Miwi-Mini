@@ -120,6 +120,7 @@ interface Widget {
   background: Material;
   shadowSize: number;
   shadowDirection: Align;
+  onTap: () => void;
   //interaction: { onTap: function() {}, onDoubleTap: function() {}, onLongPress: function() {}, }
   padding: Padding;
   contentAlign: Align;
@@ -193,6 +194,7 @@ const widgetStyleBuilders: ((params: {
   startZIndex: number;
 }) => _WidgetStylePart)[] = [];
 type _WidgetStylePart = {
+  scripts?: ((parent: HTMLElement) => void)[];
   preferParent?: { [key: string]: string | number | boolean | undefined };
   preferChild?: { [key: string]: string | number | boolean | undefined };
 };
@@ -213,6 +215,7 @@ _addNewContentCompiler({
     });
 
     // Compile the styles
+    const scripts = [];
     const shouldUseTwoElements = params.contents.contentAxis === axis.z;
     const parentStyle: any = {};
     const childStyle: any = {
@@ -237,9 +240,38 @@ _addNewContentCompiler({
           (parentStyle as any)[key] = (newProps.preferChild as any)[key];
         }
       }
+      if (exists(newProps.scripts)) {
+        for (const script of newProps.scripts) {
+          scripts.push(script);
+        }
+      }
     }
 
     // Compile the widget
+    const newParentElement = createHtmlElement({
+      tag: params.contents.htmlTag,
+      style: parentStyle,
+      content: [
+        createHtmlElement({
+          tag: `script`,
+          elementType: `text/javascript`,
+          content: document.createTextNode(``),
+        }),
+        ...(shouldUseTwoElements
+          ? [
+              createHtmlElement({
+                tag: `div`,
+                style: childStyle,
+                content: childrenInfo.htmlElements,
+              }),
+            ]
+          : childrenInfo.htmlElements),
+      ],
+    });
+    newParentElement.onclick = params.contents.onTap;
+    for (const script of scripts) {
+      script(newParentElement);
+    }
     return {
       widthGrows: _getSizeGrows(params.contents.width, childrenInfo.widthGrows),
       heightGrows: _getSizeGrows(
@@ -247,21 +279,7 @@ _addNewContentCompiler({
         childrenInfo.heightGrows,
       ),
       greatestZIndex: childrenInfo.greatestZIndex,
-      htmlElements: [
-        createHtmlElement({
-          tag: params.contents.htmlTag,
-          style: parentStyle,
-          content: shouldUseTwoElements
-            ? [
-                createHtmlElement({
-                  tag: `div`,
-                  style: childStyle,
-                  content: childrenInfo.htmlElements,
-                }),
-              ]
-            : childrenInfo.htmlElements,
-        }),
-      ],
+      htmlElements: [newParentElement],
     };
   },
 });
@@ -368,14 +386,12 @@ function numToStandardHtmlUnit(num: number) {
 
 // SECTION: Box Decoration
 /** @Note Describes the styling of the background of a widget. */
-type Material = /*Color | */ ColorLiteralRGB | ImageRef;
+type Material = Color | ColorLiteralRGB | ImageRef;
 // type HSV = `${number} ${number} ${number}`;
-/* type Color = ReturnType<typeof Color>;
- const Color = Var.variant(function (v: any): v is ColorLiteralRGB {
+type Color = ReturnType<typeof Color>;
+const Color = Var.variant(function (v: any): v is ColorLiteralRGB {
   return typeof v === `string` && v.startsWith(`#`);
-});*/
-/*const someColor = Color(`#ff00ff`);
-const isColor = Color.isThisType(someColor);*/
+});
 type ColorLiteralRGB = `#${string}`;
 const colors = readonlyObj({
   white: `#ffffffff` as ColorLiteralRGB,
@@ -396,8 +412,19 @@ const colors = readonlyObj({
 type ImageRef = string;
 widgetStyleBuilders.push((params: { widget: Widget }) => {
   const _isMaterialImage = (material: Material): material is ImageRef =>
-    /*!Color.isThisType(material) && */ material[0] !== `#`;
+    !Color.isThisType(material) && material[0] !== `#`;
   return {
+    scripts: Color.isThisType(params.widget.background)
+      ? [
+          (parent: HTMLElement) =>
+            (params.widget.background as Color).onChange.addListener(
+              () =>
+                (parent.style.backgroundColor = (
+                  params.widget.background as Color
+                ).value),
+            ),
+        ]
+      : undefined,
     preferParent: {
       // Corner Radius
       borderRadius: numToStandardHtmlUnit(params.widget.cornerRadius),
@@ -410,11 +437,11 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
       outlineOffset: `-` + numToStandardHtmlUnit(params.widget.outlineSize),
 
       // Background
-      backgroundColor: _isMaterialImage(params.widget.background)
-        ? undefined
-        : /*: Color.isThisType(params.widget.background)
-        ? params.widget.background.value*/
-          params.widget.background,
+      backgroundColor: !_isMaterialImage(params.widget.background)
+        ? Color.isThisType(params.widget.background)
+          ? params.widget.background.value
+          : params.widget.background
+        : undefined,
       backgroundImage: _isMaterialImage(params.widget.background)
         ? `url(${params.widget.background})`
         : undefined,
@@ -837,6 +864,7 @@ const _pageWidthVmin = 40;
 const _pageWidget = widgetTemplate({
   width: `100%`,
   height: `100%`,
+  onTap: () => {},
   textSize: 2,
   textIsBold: true,
   textIsItalic: false,
@@ -896,6 +924,7 @@ const page = function (
           background: colors.transparent,
           shadowSize: 0,
           shadowDirection: align.center,
+          onTap: () => {},
           padding: 0,
           contentAlign: align.center,
           contentAxis: axis.vertical,
