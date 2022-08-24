@@ -117,7 +117,7 @@ interface Widget {
   cornerRadius: number;
   outlineColor: ColorLiteralRGB;
   outlineSize: number;
-  background: Material;
+  background: Material<R>;
   shadowSize: number;
   shadowDirection: Align;
   onTap: (() => void) | undefined;
@@ -400,7 +400,9 @@ function numToStandardHtmlUnit(num: number) {
 
 // SECTION: Box Decoration
 /** @Note Describes the styling of the background of a widget. */
-type Material<P extends R | RW = R> = Color<P> | ColorLiteralRGB | ImageRef;
+type Material<P extends R | RW = R> =
+  | VarOrLiteral<Color<P>, P>
+  | VarOrLiteral<ImageRef<P>, P>;
 // type HSV = `${number} ${number} ${number}`;
 type Color<P extends R | RW> = Var<P, ReturnType<typeof Color>[`value`]>;
 const Color = Var.variant(function (v: any): v is ColorLiteralRGB {
@@ -423,7 +425,22 @@ const colors = readonlyObj({
   black: `#000000ff` as ColorLiteralRGB,
   transparent: `#ffffff00` as ColorLiteralRGB,
 });
-type ImageRef = string;
+const _imageExtensions = [`.ico`, `.svg`, `.png`, `.jpg`, `.jpeg`];
+type ImageRefLiteral = `${string}${
+  | `.ico`
+  | `.svg`
+  | `.png`
+  | `.jpg`
+  | `.jpeg`}`;
+type ImageRef<P extends R | RW> = Var<P, ReturnType<typeof ImageRef>[`value`]>;
+const ImageRef = Var.variant(function (v: any): v is ImageRefLiteral {
+  if (typeof v === `string`) {
+    for (const ext of _imageExtensions) {
+      if (v.endsWith(ext)) return true;
+    }
+  }
+  return false;
+});
 widgetStyleBuilders.push((params: { widget: Widget }) => {
   const backgroundIsColor = or(
     Color.isThisType(params.widget.background),
@@ -450,7 +467,12 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
       backgroundImage: ifel(
         backgroundIsColor,
         undefined,
-        `url(${params.widget.background})`,
+        _isVar(params.widget.background)
+          ? computed(
+              () => `url(/images/${(params.widget.background as any).value})`,
+              [params.widget.background.onChange],
+            )
+          : `url(/images/${params.widget.background})`,
       ),
       backgroundPosition: ifel(backgroundIsColor, undefined, `center`),
       backgroundSize: ifel(backgroundIsColor, undefined, `cover`),

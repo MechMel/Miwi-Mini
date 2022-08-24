@@ -114,6 +114,8 @@ class _VarWrapper<P extends R | RW, T> {
   }
 }
 
+type VarOrLiteral<V extends Var<P, T>, P extends R | RW = RW, T = any> = V | T;
+
 const computed = function <T = any>(
   compute: () => T,
   triggers: VarEvent[],
