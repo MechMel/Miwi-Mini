@@ -16,8 +16,8 @@ const VarEvent = function () {
   };
 };
 
-function _isVar(x: any): x is Var<any, any> {
-  return exists(x?.value) && exists(x?.onChange);
+function isVar(x: any): x is Var<any, any> {
+  return exists(x?.onChange);
 }
 
 type R = { r: true };
@@ -82,7 +82,7 @@ const Var = (function () {
   const returnObj: any = varConstructor;
   returnObj.fromFuncs = varFromFuncs;
   const staticMembers = {
-    isThisType: _isVar,
+    isThisType: isVar,
     variant: <T = any>(isThisType: (v: any) => v is T) => {
       const returnObj = <P extends R | RW = RW>(initVal: T) =>
         varConstructor<P, T>(initVal);
@@ -92,8 +92,8 @@ const Var = (function () {
       returnObj.fromFuncs = variantFromFuncs;
       returnObj.isThisType = (x: any) =>
         computed(
-          () => _isVar(x) && isThisType(x.value),
-          _isVar(x) ? [x.onChange] : [],
+          () => isVar(x) && isThisType(x.value),
+          isVar(x) ? [x.onChange] : [],
         );
       returnObj.variant = staticMembers.variant;
       return returnObj as typeof returnObj &
@@ -154,11 +154,11 @@ const and = function <
   : Y extends Var<R, boolean>
   ? Var<R, boolean>
   : boolean {
-  if (_isVar(x) && _isVar(y)) {
+  if (isVar(x) && isVar(y)) {
     return computed(() => x.value && y.value, [x.onChange, y.onChange]) as any;
-  } else if (_isVar(x)) {
+  } else if (isVar(x)) {
     return computed(() => x.value && y, [x.onChange]) as any;
-  } else if (_isVar(y)) {
+  } else if (isVar(y)) {
     return computed(() => x && y.value, [y.onChange]) as any;
   } else {
     return (x && y) as any;
@@ -176,11 +176,11 @@ const or = function <
   : Y extends Var<R, boolean>
   ? Var<R, boolean>
   : boolean {
-  if (_isVar(x) && _isVar(y)) {
+  if (isVar(x) && isVar(y)) {
     return computed(() => x.value || y.value, [x.onChange, y.onChange]) as any;
-  } else if (_isVar(x)) {
+  } else if (isVar(x)) {
     return computed(() => x.value || y, [x.onChange]) as any;
-  } else if (_isVar(y)) {
+  } else if (isVar(y)) {
     return computed(() => x || y.value, [y.onChange]) as any;
   } else {
     return (x || y) as any;
@@ -202,21 +202,21 @@ const ifel = function <C extends Var<R, boolean> | boolean, T, F>(
   : C extends true
   ? T
   : F {
-  if (_isVar(condition)) {
-    if (_isVar(onTrue) && _isVar(onFalse)) {
+  if (isVar(condition)) {
+    if (isVar(onTrue) && isVar(onFalse)) {
       return computed(
         () => (condition.value ? onTrue.value : onFalse.value),
-        [condition.onChange],
+        [condition.onChange, onTrue.onChange, onFalse.onChange],
       ) as any;
-    } else if (_isVar(onTrue)) {
+    } else if (isVar(onTrue)) {
       return computed(
         () => (condition.value ? onTrue.value : onFalse),
-        [condition.onChange],
+        [condition.onChange, onTrue.onChange],
       ) as any;
-    } else if (_isVar(onFalse)) {
+    } else if (isVar(onFalse)) {
       return computed(
         () => (condition.value ? onTrue : onFalse.value),
-        [condition.onChange],
+        [condition.onChange, onFalse.onChange],
       ) as any;
     } else {
       return computed(

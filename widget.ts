@@ -220,7 +220,6 @@ _addNewContentCompiler({
     });
 
     // Create the html elements
-    //const scripts = [];
     const newChildElement =
       params.contents.contentAxis === axis.z
         ? createHtmlElement({
@@ -249,11 +248,12 @@ _addNewContentCompiler({
       prop: _WidgetCompilerStyleProp,
       htmlElement: HTMLElement,
     ) {
-      if (Var.isThisType(prop)) {
+      if (isVar(prop)) {
+        // We need to do "?? ``" because setting a style prop to undefined doesn't clear the old value
         prop.onChange.addListener(
-          () => ((htmlElement.style as any)[key] = prop.value),
+          () => ((htmlElement.style as any)[key] = prop.value ?? ``),
         );
-        (htmlElement.style as any)[key] = prop.value;
+        (htmlElement.style as any)[key] = prop.value ?? ``;
       } else {
         (htmlElement.style as any)[key] = prop;
       }
@@ -275,17 +275,9 @@ _addNewContentCompiler({
           exists(newChildElement) ? newChildElement : newParentElement,
         );
       }
-      /*if (exists(newProps.scripts)) {
-        for (const script of newProps.scripts) {
-          scripts.push(script);
-        }
-      }*/
     }
 
     // Compile the widget
-    /*for (const script of scripts) {
-      script(newParentElement);
-    }*/
     return {
       widthGrows: _getSizeGrows(params.contents.width, childrenInfo.widthGrows),
       heightGrows: _getSizeGrows(
@@ -443,7 +435,8 @@ const ImageRef = Var.variant(function (v: any): v is ImageRefLiteral {
 });
 widgetStyleBuilders.push((params: { widget: Widget }) => {
   const backgroundIsColor = or(
-    Color.isThisType(params.widget.background),
+    isVar(params.widget.background) &&
+      Color.isThisType(params.widget.background),
     (params.widget.background as any)?.[0] === `#`,
   );
   return {
@@ -467,7 +460,7 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
       backgroundImage: ifel(
         backgroundIsColor,
         undefined,
-        _isVar(params.widget.background)
+        isVar(params.widget.background)
           ? computed(
               () => `url(/images/${(params.widget.background as any).value})`,
               [params.widget.background.onChange],
