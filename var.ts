@@ -113,7 +113,7 @@ const computed = function <T = any>(
   // Caching the value has significat performance beenfits
   let cachedVal: T;
   let haveCachedVal = false;
-  const tryCompute = function () {
+  const trypUpdateCachedVal = () => {
     try {
       cachedVal = compute();
       haveCachedVal = true;
@@ -121,14 +121,14 @@ const computed = function <T = any>(
       console.log(e);
     }
   };
-  const onChange = VarEvent();
-  onChange.addListener(tryCompute);
-  for (const t of triggers) t.addListener(onChange.trigger);
   return Var.fromFuncs<R, T>({
     read: function () {
-      if (!haveCachedVal) tryCompute();
+      if (!haveCachedVal) trypUpdateCachedVal();
       return cachedVal;
     },
-    onChange: onChange,
+    onChange: VarEvent({
+      listeners: [trypUpdateCachedVal],
+      triggers: triggers,
+    }),
   });
 };
