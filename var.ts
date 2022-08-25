@@ -33,9 +33,6 @@ type VarFromFuncsParams<P extends R | RW, T> = {
   readonly onChange: VarEvent;
 } & (P extends W ? { write(newVal: T): void } : {});
 
-/** @About Accepts either a Var with its literal type. e.g. "Bool<R> | boolean" */
-type VarOrLit<V extends Var<R, any>> = V | V[`value`];
-
 /** @About Represents a simple variable. */
 type Var<P extends R | RW, T> = {
   get value(): T;
@@ -47,6 +44,7 @@ type Var<P extends R | RW, T> = {
     }
   : {});
 const Var = callable({
+  /** @About Creates a Var from an inital value. */
   call: <P extends R | RW, T>(initVal: T) =>
     Var.fromFuncs<P, T>({
       read: () => initVal,
@@ -56,6 +54,8 @@ const Var = callable({
         this.onChange.trigger();
       },
     } as any),
+
+  /** @About Creates a Var from read and write functions. */
   fromFuncs: <P extends R | RW, T>(funcs: VarFromFuncsParams<P, T>) =>
     ({
       get value() {
@@ -85,16 +85,25 @@ const Var = callable({
    */
   subtype: <T = any>(isThisType: (v: any) => v is T) =>
     callable({
+      /** @About Creates a Var from an inital value. */
       call: <P extends R | RW = RW>(initVal: T) => Var<P, T>(initVal),
+
+      /** @About Creates a Var from read and write functions. */
       fromFuncs: <P extends R | RW>(funcs: VarFromFuncsParams<P, T>) =>
         Var.fromFuncs<P, T>(funcs),
+
+      /** @About Checks whether or not the given value is a variable of this type and returns a
+       * reactive boolean. */
       isThisType: (x: any) =>
         computed(
           () => Var.isThisType(x) && isThisType(x.value),
           Var.isThisType(x) ? [x.onChange] : [],
         ),
-    } as const),
+    }),
 });
+
+/** @About Accepts either a Var with its literal type. e.g. "Bool<R> | boolean" */
+type VarOrLit<V extends Var<R, any>> = V | V[`value`];
 
 /** @About An easy short hand to create a computed, read-only var. */
 const computed = function <T = any>(

@@ -329,7 +329,7 @@ widgetStyleBuilders.push(function (params: {
 }) {
   const computeSizeInfo = (givenSize: Size, childGrows: boolean) => {
     const sizeGrows = _getSizeGrows(givenSize, childGrows);
-    const exactSize = isString(givenSize)
+    const exactSize = typeof givenSize === `string`
       ? givenSize
       : givenSize !== size.basedOnContents && !sizeGrows
       ? numToStandardHtmlUnit(givenSize as number)

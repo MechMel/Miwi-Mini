@@ -1,8 +1,12 @@
-function readonlyObj<T>(obj: T): Readonly<T> {
-  return obj;
-}
+/** @About Ensures that the given value is not null or undefined. */
+const exists = <T>(x: T): x is NonNullable<T> => x !== undefined && x !== null;
 
-const callable = function <F extends Function, C extends { call: F }>(
+/** @About Type casts all the props of the given object as read-only. */
+const readonlyObj = <T>(obj: T): Readonly<T> => obj;
+
+/** @About TypeScript doesn't have an easy way to create callable objects with props.
+ * This constructs one by converting the "call" prop to the callable function. */
+const callable = function <C extends { call: Function }>(
   obj: C,
 ): C[`call`] & Omit<C, `call`> {
   const func: any = obj.call;
@@ -12,19 +16,8 @@ const callable = function <F extends Function, C extends { call: F }>(
   return func;
 };
 
-function exists<T>(obj: T): obj is NonNullable<T> {
-  return obj !== undefined && obj !== null;
-}
-
-function isString(possibleString: any): possibleString is string {
-  return typeof possibleString === `string`;
-}
-
-/** @About Must be called at the start of a script. */
-const getScriptsParent = (document: Document) =>
-  document.currentScript?.parentElement;
-
-/** @About Must be called at the start of a script. */
+/** @About Since we don't have access to JSX or React, we use this instead as a short hand
+ * for creating HTML elements. */
 function createHtmlElement(params: {
   tag: string;
   content?: Node[] | Node;
