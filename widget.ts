@@ -421,13 +421,8 @@ const colors = readonlyObj({
   black: `#000000ff` as ColorLiteralRGB,
   transparent: `#ffffff00` as ColorLiteralRGB,
 });
-const _imageExtensions = [`.ico`, `.svg`, `.png`, `.jpg`, `.jpeg`];
-type ImageRefLiteral = `${string}${
-  | `.ico`
-  | `.svg`
-  | `.png`
-  | `.jpg`
-  | `.jpeg`}`;
+const _imageExtensions = [`.ico`, `.svg`, `.png`, `.jpg`, `.jpeg`] as const;
+type ImageRefLiteral = `${string}${typeof _imageExtensions[number]}`;
 type ImageRef<P extends R | RW> = Var<P, ReturnType<typeof ImageRef>[`value`]>;
 const ImageRef = Var.variant(function (v: any): v is ImageRefLiteral {
   if (typeof v === `string`) {
