@@ -1,24 +1,29 @@
 /** @About Represents a basic event that can be listened to. */
 type VarEvent = ReturnType<typeof VarEvent>;
-const VarEvent = function ({
-  listeners = [] as (() => any)[],
-  triggers = [] as { addListener: (listener?: () => any) => void }[],
-} = {}) {
-  const trigger = () => listeners.forEach((listener) => listener());
-  for (const t of triggers) t.addListener(trigger);
-  return {
-    addListener: function (listener?: () => any) {
-      if (exists(listener) && !listeners.includes(listener!)) {
-        listeners.push(listener!);
-      }
-    },
+const VarEvent = callable({
+  call: function ({
+    listeners = [] as (() => any)[],
+    triggers = [] as { addListener: (listener?: () => any) => void }[],
+  } = {}) {
+    const trigger = () => listeners.forEach((listener) => listener());
+    for (const t of triggers) t.addListener(trigger);
+    return {
+      addListener: function (listener?: () => any) {
+        if (exists(listener) && !listeners.includes(listener!)) {
+          listeners.push(listener!);
+        }
+      },
 
-    removeListener: (listenerToRemove?: () => any) =>
-      listeners.filter((listener) => listener !== listenerToRemove),
+      removeListener: (listenerToRemove?: () => any) =>
+        listeners.filter((listener) => listener !== listenerToRemove),
 
-    trigger: trigger,
-  };
-};
+      trigger: trigger,
+    };
+  },
+
+  /** @About Checks whether or not the given value is a VarEvent. */
+  isThisType: (x: any): boolean => exists(x?.addListener),
+});
 
 /** @About Provides read access to a Var. */
 type R = { r: true };
@@ -37,6 +42,7 @@ type VarFromFuncsParams<P extends R | RW, T> = {
 type Var<P extends R | RW, T> = {
   get value(): T;
   get onChange(): VarEvent;
+  toString(): string;
 } & (P extends W
   ? {
       _assertRW: undefined;
@@ -70,17 +76,24 @@ const Var = callable({
         return funcs.onChange;
       },
 
+      toString() {
+        return String(this.value);
+      },
+
       // https://stackoverflow.com/a/71560711
       // We can't infer this yet beacuse Prettier doesn't like "ReturnType<typeof Var<P, T>>".
     } as Var<P, T>),
 
   /** @About Checks whether or not the given value is a variable of any sort. */
   // We can't check "exists(x?.value)" beacuse sometimes value exists, but returns undefined.
-  isThisType: (x: any): x is Var<any, any> => exists(x?.onChange),
+  isVar: <P extends R | RW, T>(x: VarOrLit<Var<P, T>>): x is Var<P, T> =>
+    exists((x as any)?.onChange),
+
+  toLit: <T>(x: T): VarToLit<T> => (Var.isVar(x) ? x.value : x) as any,
 
   /** @About Creates a var for a specific, literal type. The standard format is:
    *
-   * type Num<P extends R | RW = RW> = Var<P, number>;
+   * type Num<P extends R | RW = RW> = VarSubtype<P, number>;
    * const Num = Var.subtype((x: any): x is number => typeof x === `number`);
    */
   subtype: <T = any>(isThisType: (v: any) => v is T) =>
@@ -94,11 +107,7 @@ const Var = callable({
 
       /** @About Checks whether or not the given value is a variable of this type and returns a
        * reactive boolean. */
-      isThisType: (x: any) =>
-        computed(
-          () => Var.isThisType(x) && isThisType(x.value),
-          Var.isThisType(x) ? [x.onChange] : [],
-        ),
+      is: (x: any) => computed(() => isThisType(Var.toLit(x)), [x]),
 
       // TODO: Allow subtypes of subtypes of var. For example, Color could be a subtype of Chars.
     }),
@@ -107,30 +116,49 @@ const Var = callable({
 /** @About Accepts either a Var with its literal type. e.g. "Bool<R> | boolean" */
 type VarOrLit<V extends Var<R, any>> = V | V[`value`];
 
-/** @About An easy short hand to create a computed, read-only var. */
-const computed = function <T = any>(
+/** @About Converts the given type from a var to a lit or from a lit to a itself. */
+type VarToLit<V> = V extends Var<R, any> ? V[`value`] : V;
+
+/** @About This is how we usually handle subtypes of Var.
+ *
+ * type Num<P extends R | RW = RW> = VarSubtype<P, number>;
+ */
+type VarSubtype<P extends R | RW, T> = VarOrLit<Var<P, T>>;
+
+/** @About An easy short hand to create a computed, read-only Var. */
+const computed = function <T>(
   compute: () => T,
-  triggers: VarEvent[],
-): Var<R, T> {
-  // Caching the value has significat performance beenfits
-  let cachedVal: T;
-  let haveCachedVal = false;
-  const trypUpdateCachedVal = () => {
-    try {
-      cachedVal = compute();
-      haveCachedVal = true;
-    } catch (e) {
-      console.log(e);
-    }
-  };
-  return Var.fromFuncs<R, T>({
-    read: function () {
-      if (!haveCachedVal) trypUpdateCachedVal();
-      return cachedVal;
-    },
-    onChange: VarEvent({
-      listeners: [trypUpdateCachedVal],
-      triggers: triggers,
-    }),
-  });
+  triggers: (VarOrLit<Var<R, any>> | VarEvent)[],
+): VarOrLit<Var<R, T>> {
+  const normalizedTriggers: VarEvent[] = triggers
+    // Convert vars to events
+    .map((x) => (Var.isVar(x) ? x.onChange : x))
+    // Ignore literals
+    .filter(VarEvent.isThisType);
+  // If there is nothing to react to, just return a literal
+  if (normalizedTriggers.length === 0) {
+    return compute();
+  } else {
+    // Caching the computed value has significat performance benefits
+    let cachedVal: T;
+    let haveCachedVal = false;
+    const trypUpdateCachedVal = () => {
+      try {
+        cachedVal = compute();
+        haveCachedVal = true;
+      } catch (e) {
+        console.log(e);
+      }
+    };
+    return Var.fromFuncs<R, T>({
+      read: function () {
+        if (!haveCachedVal) trypUpdateCachedVal();
+        return cachedVal;
+      },
+      onChange: VarEvent({
+        listeners: [trypUpdateCachedVal],
+        triggers: normalizedTriggers,
+      }),
+    });
+  }
 };

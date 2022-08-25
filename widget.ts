@@ -114,10 +114,10 @@ _addNewContentCompiler({
 interface Widget {
   width: Size;
   height: Size;
-  cornerRadius: number;
+  cornerRadius: Num<R>;
   outlineColor: ColorLiteralRGB;
   outlineSize: number;
-  background: VarOrLit<Material<R>>;
+  background: Material<R>;
   shadowSize: number;
   shadowDirection: Align;
   onTap: (() => void) | undefined;
@@ -248,7 +248,7 @@ _addNewContentCompiler({
       prop: _WidgetCompilerStyleProp,
       htmlElement: HTMLElement,
     ) {
-      if (Var.isThisType(prop)) {
+      if (Var.isVar(prop)) {
         // We need to do "?? ``" because setting a style prop to undefined doesn't clear the old value
         prop.onChange.addListener(
           () => ((htmlElement.style as any)[key] = prop.value ?? ``),
@@ -329,11 +329,12 @@ widgetStyleBuilders.push(function (params: {
 }) {
   const computeSizeInfo = (givenSize: Size, childGrows: boolean) => {
     const sizeGrows = _getSizeGrows(givenSize, childGrows);
-    const exactSize = typeof givenSize === `string`
-      ? givenSize
-      : givenSize !== size.basedOnContents && !sizeGrows
-      ? numToStandardHtmlUnit(givenSize as number)
-      : undefined;
+    const exactSize =
+      typeof givenSize === `string`
+        ? givenSize
+        : givenSize !== size.basedOnContents && !sizeGrows
+        ? numToStandardHtmlUnit(givenSize as number)
+        : undefined;
     return [exactSize, sizeGrows];
   };
   const [exactWidth, widthGrows] = computeSizeInfo(
@@ -380,9 +381,10 @@ widgetStyleBuilders.push(function (params: {
   };
 });
 
-function numToStandardHtmlUnit(num: number) {
-  return `${num * (_pageWidthVmin / 24)}vmin`;
-}
+const numToStandardHtmlUnit = (num: Num<R>) =>
+  `${mul(num, div(_pageWidthVmin, 24))}vmin`;
+const numToStandardHtmlUnit2 = (num: Num<R>) =>
+  computed(() => `${mul(num, div(_pageWidthVmin, 24))}vmin`, [num]);
 
 //
 //
@@ -393,16 +395,17 @@ function numToStandardHtmlUnit(num: number) {
 // SECTION: Box Decoration
 /** @Note Describes the styling of the background of a widget. */
 type MaterialLiteral = ColorLiteralRGB | ImageRefLiteral;
-type Material<P extends R | RW> = Var<P, MaterialLiteral>;
-const Material = Var.subtype(function (v: any): v is MaterialLiteral {
-  return Color.isThisType(v).value || ImageRef.isThisType(v).value;
-});
+type Material<P extends R | RW> = VarSubtype<P, MaterialLiteral>;
+const Material = Var.subtype(
+  (v: any): v is MaterialLiteral =>
+    Var.toLit(Color.is(v)) || Var.toLit(ImageRef.is(v)),
+);
 
 // type HSV = `${number} ${number} ${number}`;
-type Color<P extends R | RW> = Var<P, ColorLiteralRGB>;
-const Color = Var.subtype(function (v: any): v is ColorLiteralRGB {
-  return typeof v === `string` && v.startsWith(`#`);
-});
+type Color<P extends R | RW> = VarSubtype<P, ColorLiteralRGB>;
+const Color = Var.subtype(
+  (v: any): v is ColorLiteralRGB => typeof v === `string` && v.startsWith(`#`),
+);
 type ColorLiteralRGB = `#${string}`;
 const colors = readonlyObj({
   white: `#ffffffff` as ColorLiteralRGB,
@@ -422,7 +425,7 @@ const colors = readonlyObj({
 });
 const _imageExtensions = [`.ico`, `.svg`, `.png`, `.jpg`, `.jpeg`] as const;
 type ImageRefLiteral = `${string}${typeof _imageExtensions[number]}`;
-type ImageRef<P extends R | RW> = Var<P, ImageRefLiteral>;
+type ImageRef<P extends R | RW> = VarSubtype<P, ImageRefLiteral>;
 const ImageRef = Var.subtype(function (v: any): v is ImageRefLiteral {
   if (typeof v === `string`) {
     for (const ext of _imageExtensions) {
@@ -432,15 +435,11 @@ const ImageRef = Var.subtype(function (v: any): v is ImageRefLiteral {
   return false;
 });
 widgetStyleBuilders.push((params: { widget: Widget }) => {
-  const backgroundIsColor = or(
-    Var.isThisType(params.widget.background) &&
-      Color.isThisType(params.widget.background),
-    (params.widget.background as any)?.[0] === `#`,
-  );
+  const backgroundIsColor = Color.is(params.widget.background);
   return {
     preferParent: {
       // Corner Radius
-      borderRadius: numToStandardHtmlUnit(params.widget.cornerRadius),
+      borderRadius: numToStandardHtmlUnit2(params.widget.cornerRadius),
 
       // Border
       border: `none`,
@@ -458,12 +457,7 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
       backgroundImage: ifel(
         backgroundIsColor,
         undefined,
-        Var.isThisType(params.widget.background)
-          ? computed(
-              () => `url(/images/${(params.widget.background as any).value})`,
-              [params.widget.background.onChange],
-            )
-          : `url(/images/${params.widget.background})`,
+        concat(`url(/images/`, params.widget.background, `)`),
       ),
       backgroundPosition: ifel(backgroundIsColor, undefined, `center`),
       backgroundSize: ifel(backgroundIsColor, undefined, `cover`),
