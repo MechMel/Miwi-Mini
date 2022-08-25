@@ -117,7 +117,7 @@ interface Widget {
   cornerRadius: number;
   outlineColor: ColorLiteralRGB;
   outlineSize: number;
-  background: VarOrLiteral<Material<R>, R>;
+  background: VarOrLit<Material<R>>;
   shadowSize: number;
   shadowDirection: Align;
   onTap: (() => void) | undefined;
@@ -248,7 +248,7 @@ _addNewContentCompiler({
       prop: _WidgetCompilerStyleProp,
       htmlElement: HTMLElement,
     ) {
-      if (isVar(prop)) {
+      if (Var.isThisType(prop)) {
         // We need to do "?? ``" because setting a style prop to undefined doesn't clear the old value
         prop.onChange.addListener(
           () => ((htmlElement.style as any)[key] = prop.value ?? ``),
@@ -392,16 +392,15 @@ function numToStandardHtmlUnit(num: number) {
 
 // SECTION: Box Decoration
 /** @Note Describes the styling of the background of a widget. */
-type Material<P extends R | RW> = Var<P, ReturnType<typeof Material>[`value`]>;
-const Material = Var.variant(function (
-  v: any,
-): v is ColorLiteralRGB | ImageRefLiteral {
+type MaterialLiteral = ColorLiteralRGB | ImageRefLiteral;
+type Material<P extends R | RW> = Var<P, MaterialLiteral>;
+const Material = Var.subtype(function (v: any): v is MaterialLiteral {
   return Color.isThisType(v).value || ImageRef.isThisType(v).value;
 });
 
 // type HSV = `${number} ${number} ${number}`;
-type Color<P extends R | RW> = Var<P, ReturnType<typeof Color>[`value`]>;
-const Color = Var.variant(function (v: any): v is ColorLiteralRGB {
+type Color<P extends R | RW> = Var<P, ColorLiteralRGB>;
+const Color = Var.subtype(function (v: any): v is ColorLiteralRGB {
   return typeof v === `string` && v.startsWith(`#`);
 });
 type ColorLiteralRGB = `#${string}`;
@@ -423,8 +422,8 @@ const colors = readonlyObj({
 });
 const _imageExtensions = [`.ico`, `.svg`, `.png`, `.jpg`, `.jpeg`] as const;
 type ImageRefLiteral = `${string}${typeof _imageExtensions[number]}`;
-type ImageRef<P extends R | RW> = Var<P, ReturnType<typeof ImageRef>[`value`]>;
-const ImageRef = Var.variant(function (v: any): v is ImageRefLiteral {
+type ImageRef<P extends R | RW> = Var<P, ImageRefLiteral>;
+const ImageRef = Var.subtype(function (v: any): v is ImageRefLiteral {
   if (typeof v === `string`) {
     for (const ext of _imageExtensions) {
       if (v.endsWith(ext)) return true;
@@ -434,7 +433,7 @@ const ImageRef = Var.variant(function (v: any): v is ImageRefLiteral {
 });
 widgetStyleBuilders.push((params: { widget: Widget }) => {
   const backgroundIsColor = or(
-    isVar(params.widget.background) &&
+    Var.isThisType(params.widget.background) &&
       Color.isThisType(params.widget.background),
     (params.widget.background as any)?.[0] === `#`,
   );
@@ -459,7 +458,7 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
       backgroundImage: ifel(
         backgroundIsColor,
         undefined,
-        isVar(params.widget.background)
+        Var.isThisType(params.widget.background)
           ? computed(
               () => `url(/images/${(params.widget.background as any).value})`,
               [params.widget.background.onChange],

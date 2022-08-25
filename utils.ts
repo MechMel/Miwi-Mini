@@ -2,6 +2,16 @@ function readonlyObj<T>(obj: T): Readonly<T> {
   return obj;
 }
 
+const callable = function <F extends Function, C extends { call: F }>(
+  obj: C,
+): C[`call`] & Omit<C, `call`> {
+  const func: any = obj.call;
+  for (const key in obj) {
+    if (key != `call`) func[key] = (obj as any)[key];
+  }
+  return func;
+};
+
 function exists<T>(obj: T): obj is NonNullable<T> {
   return obj !== undefined && obj !== null;
 }
@@ -14,6 +24,7 @@ function isString(possibleString: any): possibleString is string {
 const getScriptsParent = (document: Document) =>
   document.currentScript?.parentElement;
 
+/** @About Must be called at the start of a script. */
 function createHtmlElement(params: {
   tag: string;
   content?: Node[] | Node;
