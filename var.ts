@@ -99,6 +99,8 @@ const Var = callable({
           () => Var.isThisType(x) && isThisType(x.value),
           Var.isThisType(x) ? [x.onChange] : [],
         ),
+
+      // TODO: Allow subtypes of subtypes of var. For example, Color could be a subtype of Chars.
     }),
 });
 
