@@ -117,7 +117,7 @@ interface Widget {
   cornerRadius: number;
   outlineColor: ColorLiteralRGB;
   outlineSize: number;
-  background: Material<R>;
+  background: VarOrLiteral<Material<R>, R>;
   shadowSize: number;
   shadowDirection: Align;
   onTap: (() => void) | undefined;
@@ -392,9 +392,13 @@ function numToStandardHtmlUnit(num: number) {
 
 // SECTION: Box Decoration
 /** @Note Describes the styling of the background of a widget. */
-type Material<P extends R | RW = R> =
-  | VarOrLiteral<Color<P>, P>
-  | VarOrLiteral<ImageRef<P>, P>;
+type Material<P extends R | RW> = Var<P, ReturnType<typeof Material>[`value`]>;
+const Material = Var.variant(function (
+  v: any,
+): v is ColorLiteralRGB | ImageRefLiteral {
+  return Color.isThisType(v).value || ImageRef.isThisType(v).value;
+});
+
 // type HSV = `${number} ${number} ${number}`;
 type Color<P extends R | RW> = Var<P, ReturnType<typeof Color>[`value`]>;
 const Color = Var.variant(function (v: any): v is ColorLiteralRGB {
