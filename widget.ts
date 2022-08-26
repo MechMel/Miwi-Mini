@@ -10,7 +10,7 @@ type _SingleContentTypes =
   | Str<R>
   | Bool<R>
   | Num<R>
-  | Required<IconLiteral>
+  | Required<IconLit>
   | Required<Widget>;
 const isContent = function (possibleContent: any): possibleContent is Contents {
   let isActuallyContent = false;
@@ -109,7 +109,7 @@ function createHtmlElement(params: {
   tag: string;
   content?: Node[] | Node;
   onClick?: () => void;
-  style?: { [key: string]: Str<R> | Num<R> | Bool<R> | undefined };
+  style?: { [key: string]: Str<R> | Num<R> | Bool<R> };
   elementType?: string;
   id?: string;
   class?: string;
@@ -167,11 +167,11 @@ interface Widget {
   outlineSize: Num<R>;
   background: Material<R>;
   shadowSize: Num<R>;
-  shadowDirection: Align;
+  shadowDirection: AlignLit;
   onTap: (() => void) | undefined;
   //interaction: { onTap: function() {}, onDoubleTap: function() {}, onLongPress: function() {}, }
   padding: Num<R>;
-  contentAlign: Align;
+  contentAlign: AlignLit;
   contentAxis: Axis<R>;
   contentIsScrollableX: Bool<R>;
   contentIsScrollableY: Bool<R>;
@@ -427,19 +427,19 @@ const numToStandardHtmlUnit = (num: Num<R>) =>
 
 // SECTION: Box Decoration
 /** @Note Describes the styling of the background of a widget. */
-type MaterialLiteral = ColorLiteralRGB | ImageRefLiteral;
-type Material<P extends R | RW> = VarSubtype<P, MaterialLiteral>;
+type MaterialLit = ColorLitRGB | ImageRefLit;
+type Material<P extends R | RW> = VarSubtype<P, MaterialLit>;
 const Material = Var.subtype(
-  (v: any): v is MaterialLiteral =>
+  (v: any): v is MaterialLit =>
     Var.toLit(Color.is(v)) || Var.toLit(ImageRef.is(v)),
 );
 
 // type HSV = `${number} ${number} ${number}`;
-type Color<P extends R | RW> = VarSubtype<P, ColorLiteralRGB>;
+type Color<P extends R | RW> = VarSubtype<P, ColorLitRGB>;
 const Color = Var.subtype(
-  (v: any): v is ColorLiteralRGB => typeof v === `string` && v.startsWith(`#`),
+  (v: any): v is ColorLitRGB => typeof v === `string` && v.startsWith(`#`),
 );
-type ColorLiteralRGB = `#${string}`;
+type ColorLitRGB = `#${string}`;
 const colors = readonlyObj({
   white: `#ffffffff`,
   almostWhite: `#f9fafdff`,
@@ -457,9 +457,9 @@ const colors = readonlyObj({
   transparent: `#ffffff00`,
 } as const);
 const _imageExtensions = [`.ico`, `.svg`, `.png`, `.jpg`, `.jpeg`] as const;
-type ImageRefLiteral = `${string}${typeof _imageExtensions[number]}`;
-type ImageRef<P extends R | RW> = VarSubtype<P, ImageRefLiteral>;
-const ImageRef = Var.subtype(function (v: any): v is ImageRefLiteral {
+type ImageRefLit = `${string}${typeof _imageExtensions[number]}`;
+type ImageRef<P extends R | RW> = VarSubtype<P, ImageRefLit>;
+const ImageRef = Var.subtype(function (v: any): v is ImageRefLit {
   if (typeof v === `string`) {
     for (const ext of _imageExtensions) {
       if (v.endsWith(ext)) return true;
@@ -544,18 +544,18 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
 //
 
 // SECTION: Content Align
-type Align = { x: number; y: number };
+type AlignLit = typeof align[keyof typeof align];
 const align = readonlyObj({
-  topLeft: { x: -1, y: 1 } as Align,
-  topCenter: { x: 0, y: 1 } as Align,
-  topRight: { x: 1, y: 1 } as Align,
-  centerLeft: { x: -1, y: 0 } as Align,
-  center: { x: 0, y: 0 } as Align,
-  centerRight: { x: 1, y: 0 } as Align,
-  bottomLeft: { x: -1, y: -1 } as Align,
-  bottomCenter: { x: 0, y: -1 } as Align,
-  bottomRight: { x: 1, y: -1 } as Align,
-});
+  topLeft: { x: -1, y: 1 },
+  topCenter: { x: 0, y: 1 },
+  topRight: { x: 1, y: 1 },
+  centerLeft: { x: -1, y: 0 },
+  center: { x: 0, y: 0 },
+  centerRight: { x: 1, y: 0 },
+  bottomLeft: { x: -1, y: -1 },
+  bottomCenter: { x: 0, y: -1 },
+  bottomRight: { x: 1, y: -1 },
+} as const);
 widgetStyleBuilders.push(
   (params: {
     widget: Widget;
@@ -649,9 +649,9 @@ widgetStyleBuilders.push(
 //
 
 // SECTION: Content Axis
-type AxisLiteral = typeof axis[keyof typeof axis];
-type Axis<P extends R | RW> = VarSubtype<P, AxisLiteral>;
-const Axis = Var.subtype((x: any): x is AxisLiteral =>
+type AxisLit = typeof axis[keyof typeof axis];
+type Axis<P extends R | RW> = VarSubtype<P, AxisLit>;
+const Axis = Var.subtype((x: any): x is AxisLit =>
   Object.values(axis).includes(x),
 );
 const axis = readonlyObj({
@@ -705,10 +705,10 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
 //
 
 // SECTION: Content Spacing
-type SpacingLiteral = number | typeof spacing[keyof typeof spacing];
-type Spacing<P extends R | RW> = VarSubtype<P, SpacingLiteral>;
+type SpacingLit = number | typeof spacing[keyof typeof spacing];
+type Spacing<P extends R | RW> = VarSubtype<P, SpacingLit>;
 const Spacing = Var.subtype(
-  (x: any): x is SpacingLiteral =>
+  (x: any): x is SpacingLit =>
     typeof x === `number` || Object.values(spacing).includes(x),
 );
 const spacing = readonlyObj({
@@ -740,6 +740,8 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
 //
 
 // SECTION: Text Style
+// TODO: Change textColor to textMaterial. Then use text to mask a backdrop for gradiants or images.
+// Also, have mask be a valid material so that the same back drop can be used for several different elements.
 widgetStyleBuilders.push((params: { widget: Widget }) => {
   return {
     preferParent: {
@@ -770,7 +772,7 @@ const _inlineContentCloseTag = `%@#$$`;
 _addNewContentCompiler({
   isThisType: (contents: Contents) => exists((contents as any)?.icon),
   compile: function (params: {
-    contents: IconLiteral;
+    contents: IconLit;
     parent: Widget;
     startZIndex: number;
   }): _ContentCompilationResults {

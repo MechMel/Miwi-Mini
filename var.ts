@@ -40,15 +40,34 @@ type VarFromFuncsParams<P extends R | RW, T> = {
 
 /** @About Represents a simple variable. */
 type Var<P extends R | RW, T> = {
-  get value(): T;
-  get onChange(): VarEvent;
-  toString(): string;
-} & (P extends W
-  ? {
-      _assertRW: undefined;
-      set value(newVal: T);
-    }
-  : {});
+  [Key in  // We get rid of string's props because TypeScript `#${string}` counts as a string object not a string literal
+    | (keyof (T extends string
+        ? {}
+        : T extends { [key: string]: any }
+        ? T
+        : {}) &
+        string)
+    | `toString`
+    | `value`
+    | `onChange`
+    | `_assertRW`]: Key extends `toString`
+    ? () => string
+    : Key extends `value`
+    ? T
+    : Key extends `onChange`
+    ? VarEvent
+    : Key extends `_assertRW`
+    ? undefined
+    : Key extends keyof T
+    ? T[Key] extends Function | undefined
+      ? T[Key]
+      : Var<
+          GetVarPerms<T[Key]>,
+          T[Key] extends Var<R, any> ? T[Key][`value`] : T[Key]
+        >
+    : undefined;
+};
+type Wrap<T> = Map<string, T>;
 const Var = callable({
   /** @About Creates a Var from an inital value. */
   call: <P extends R | RW, T>(val: T) =>
@@ -65,33 +84,82 @@ const Var = callable({
     } as any),
 
   /** @About Creates a Var from read and write functions. */
-  fromFuncs: <P extends R | RW, T>(funcs: VarFromFuncsParams<P, T>) =>
-    ({
-      get value() {
-        return funcs.read();
-      },
+  fromFuncs: <P extends R | RW, T>(
+    funcs: VarFromFuncsParams<P, T>,
+  ): Var<P, T> =>
+    new Proxy(
+      {
+        toString() {
+          return String(funcs.read());
+        },
+      } as any,
+      {
+        get(obj, prop, reciever): any {
+          switch (prop) {
+            case `value`:
+              return funcs.read();
+            case `onChange`:
+              return funcs.onChange;
+            case `_assertRW`:
+              return undefined;
+            case `toString`:
+              return () => String(funcs.read());
+            // This should only get triggered if this is an object Var.
+            default:
+              const propVal = (funcs.read() as any)[prop];
+              if (propVal === undefined || typeof propVal === `function`) {
+                return propVal;
+              } else {
+                const onChange = VarEvent();
+                let oldPropOnChange: VarEvent | undefined = undefined;
+                funcs.onChange.addListener(() => {
+                  if (exists(oldPropOnChange))
+                    oldPropOnChange.removeListener(onChange.trigger);
+                  const inst: any = funcs.read();
+                  if (Var.isVar(inst[prop])) {
+                    inst[prop].onChange.addListener(onChange.trigger);
+                    oldPropOnChange = inst[prop].onChange;
+                  }
+                  onChange.trigger;
+                });
+                return Var.fromFuncs({
+                  read: () => Var.toLit((funcs.read() as any)[prop]),
+                  write: (newVal) => {
+                    const inst: any = funcs.read();
+                    if (Var.isVar(inst[prop])) {
+                      inst[prop].value = newVal;
+                    } else {
+                      inst[prop] = newVal;
+                    }
+                  },
+                  onChange: onChange,
+                });
+              }
+          }
+        },
 
-      set value(newVal: any) {
-        (funcs as any).write?.(newVal);
-      },
+        set(obj, prop, newVal) {
+          switch (prop) {
+            case `value`:
+              (funcs as any).write?.(newVal);
+              break;
+            default:
+              throw `Props of Var<R | RW, Obj> should not be set.`;
+          }
+          return true;
+        },
 
-      get onChange() {
-        return funcs.onChange;
+        // https://stackoverflow.com/a/71560711
+        // We can't infer this yet beacuse Prettier doesn't like "ReturnType<typeof Var<P, T>>".
       },
-
-      toString() {
-        return String(this.value);
-      },
-
-      // https://stackoverflow.com/a/71560711
-      // We can't infer this yet beacuse Prettier doesn't like "ReturnType<typeof Var<P, T>>".
-    } as Var<P, T>),
+    ) as Var<P, T>,
 
   /** @About Checks whether or not the given value is a variable of any sort. */
   // We can't check "exists(x?.value)" beacuse sometimes value exists, but returns undefined.
-  isVar: (x: any): x is Var<any, any> => exists((x as any)?.onChange),
+  isVar: <P extends R | RW, T>(x: Var<P, T> | T): x is Var<P, T> =>
+    exists((x as any)?.onChange),
 
-  toLit: <T>(x: T): VarToLit<T> => (Var.isVar(x) ? x.value : x) as any,
+  toLit: <T>(x: VarOrLit<R, T>): T => (Var.isVar(x) ? x.value : x) as any,
 
   /** @About Creates a var for a specific, literal type. The standard format is:
    *
@@ -101,7 +169,7 @@ const Var = callable({
   subtype: <T = any>(isThisType: (v: any) => v is T) =>
     callable({
       /** @About Creates a Var from an inital value. */
-      call: <P extends R | RW = RW>(initVal: T) => Var<P, T>(initVal),
+      call: <P extends R | RW = RW>(val: T) => Var<P, T>(val),
 
       /** @About Creates a Var from read and write functions. */
       fromFuncs: <P extends R | RW>(funcs: VarFromFuncsParams<P, T>) =>
@@ -115,33 +183,25 @@ const Var = callable({
     }),
 });
 
-/** @About Accepts either a Var with its literal type. e.g. "Bool<R> | boolean" */
-type VarOrLit<V extends Var<R, any>> = V | V[`value`];
+/** @About Accepts either a Var or its literal type. e.g. "Bool<R> | boolean" */
+type VarOrLit<P extends R | RW, T> = T | Var<P, T>;
 
-/** @About Converts the given type from a var to a lit or from a lit to a itself. */
-type VarToLit<V> = V extends Var<R, any> ? V[`value`] : V;
+/** @About Retrieves the read/write permissions of any type. */
+// We assume that literals should be treated as read-only, because they are used when a value doesn't change.
+type GetVarPerms<V> = V extends Var<RW, any> ? RW : R;
 
 /** @About This is how we usually handle subtypes of Var.
  *
  * type Num<P extends R | RW = RW> = VarSubtype<P, number>;
  */
-type VarSubtype<P extends R | RW, T> = VarOrLit<Var<P, T>>;
+type VarSubtype<P extends R | RW, T> = VarOrLit<P, T>;
 
 /** @About Checks whether or not the two given Vars are equal. */
-const equ = (x: VarOrLit<Var<R, any>>, y: VarOrLit<Var<R, any>>) =>
+const equ = (x: VarOrLit<R, any>, y: VarOrLit<R, any>) =>
   computed(() => Var.toLit(x) === Var.toLit(y), [x, y]);
 
-/** @About Sets the left hand value to the right hand value. */
-/*const set = <T>(
-  l: Var<RW, T> | ((newVal: T) => void),
-  r: VarOrLit<Var<R, T>>,
-) => (Var.isVar(l) ? (l.value = Var.toLit(r)) : l(Var.toLit(r)));*/
-
 /** @About Calls the left hand set function whenever the right hand value changes. */
-const setLWhenRChanges = <T>(
-  l: (newVal: T) => void,
-  r: VarOrLit<Var<R, T>>,
-) => {
+const setLWhenRChanges = <T>(l: (newVal: T) => void, r: VarOrLit<R, T>) => {
   if (Var.isVar(r)) r.onChange.addListener(() => l(Var.toLit(r)));
   l(Var.toLit(r));
 };
@@ -149,8 +209,8 @@ const setLWhenRChanges = <T>(
 /** @About An easy short hand to create a computed, read-only Var. */
 const computed = function <T>(
   compute: () => T,
-  triggers: (VarOrLit<Var<R, any>> | VarEvent)[],
-): VarOrLit<Var<R, T>> {
+  triggers: (VarOrLit<R, any> | VarEvent)[],
+): VarOrLit<R, T> {
   const normalizedTriggers: VarEvent[] = triggers
     // Convert vars to events
     .map((x) => (Var.isVar(x) ? x.onChange : x))

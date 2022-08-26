@@ -1,11 +1,11 @@
-type IconLiteral = { icon: string; toString: () => string };
-function _isIcon(possibleIcon: any): possibleIcon is IconLiteral {
+type IconLit = { icon: string; toString: () => string };
+function _isIcon(possibleIcon: any): possibleIcon is IconLit {
   return exists(possibleIcon?.icon);
 }
 
 function _buildIconsObj<T1 extends T2[] | [], T2 extends string>(
   unformattedIcons: T1,
-): { readonly [Key in T1[number]]: IconLiteral } {
+): { readonly [Key in T1[number]]: IconLit } {
   const formattedIcons: any = {};
   for (const i in unformattedIcons) {
     formattedIcons[unformattedIcons[i]] = {
@@ -18,7 +18,7 @@ function _buildIconsObj<T1 extends T2[] | [], T2 extends string>(
     };
   }
   return readonlyObj(formattedIcons) as {
-    readonly [Key in T1[number]]: IconLiteral;
+    readonly [Key in T1[number]]: IconLit;
   };
 }
 
