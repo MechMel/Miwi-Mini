@@ -51,13 +51,16 @@ type Var<P extends R | RW, T> = {
   : {});
 const Var = callable({
   /** @About Creates a Var from an inital value. */
-  call: <P extends R | RW, T>(initVal: T) =>
+  call: <P extends R | RW, T>(val: T) =>
     Var.fromFuncs<P, T>({
-      read: () => initVal,
+      read: () => val,
       onChange: VarEvent(),
       write: function (newVal: T) {
-        initVal = newVal;
-        this.onChange.trigger();
+        // Ideally, we don't want to trigger the onChange event unless something has actually changed.
+        if (newVal !== val) {
+          val = newVal;
+          this.onChange.trigger();
+        }
       },
     } as any),
 
@@ -86,8 +89,7 @@ const Var = callable({
 
   /** @About Checks whether or not the given value is a variable of any sort. */
   // We can't check "exists(x?.value)" beacuse sometimes value exists, but returns undefined.
-  isVar: <P extends R | RW, T>(x: VarOrLit<Var<P, T>>): x is Var<P, T> =>
-    exists((x as any)?.onChange),
+  isVar: (x: any): x is Var<any, any> => exists((x as any)?.onChange),
 
   toLit: <T>(x: T): VarToLit<T> => (Var.isVar(x) ? x.value : x) as any,
 
@@ -130,8 +132,19 @@ const equ = (x: VarOrLit<Var<R, any>>, y: VarOrLit<Var<R, any>>) =>
   computed(() => Var.toLit(x) === Var.toLit(y), [x, y]);
 
 /** @About Sets the left hand value to the right hand value. */
-const set = (r: VarOrLit<Var<R, any>>, l: VarOrLit<Var<R, any>>) =>
-  Var.isVar(r) ? ((r as any).value = Var.toLit(l)) : (r = Var.toLit(l));
+/*const set = <T>(
+  l: Var<RW, T> | ((newVal: T) => void),
+  r: VarOrLit<Var<R, T>>,
+) => (Var.isVar(l) ? (l.value = Var.toLit(r)) : l(Var.toLit(r)));*/
+
+/** @About Calls the left hand set function whenever the right hand value changes. */
+const setLWhenRChanges = <T>(
+  l: (newVal: T) => void,
+  r: VarOrLit<Var<R, T>>,
+) => {
+  if (Var.isVar(r)) r.onChange.addListener(() => l(Var.toLit(r)));
+  l(Var.toLit(r));
+};
 
 /** @About An easy short hand to create a computed, read-only Var. */
 const computed = function <T>(
@@ -150,23 +163,23 @@ const computed = function <T>(
     // Caching the computed value has significat performance benefits
     let cachedVal: T;
     let haveCachedVal = false;
+    const onChange = VarEvent();
     const trypUpdateCachedVal = () => {
-      try {
-        cachedVal = compute();
+      const newVal = compute();
+      // Ideally, we don't want to trigger the onChange event unless something has actually changed.
+      if (!haveCachedVal || cachedVal !== newVal) {
+        cachedVal = newVal;
         haveCachedVal = true;
-      } catch (e) {
-        console.log(e);
+        onChange.trigger();
       }
     };
+    for (const t of normalizedTriggers) t.addListener(trypUpdateCachedVal);
     return Var.fromFuncs<R, T>({
       read: function () {
         if (!haveCachedVal) trypUpdateCachedVal();
         return cachedVal;
       },
-      onChange: VarEvent({
-        listeners: [trypUpdateCachedVal],
-        triggers: normalizedTriggers,
-      }),
+      onChange: onChange,
     });
   }
 };

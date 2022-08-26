@@ -27,3 +27,12 @@ const div = (x: Num<R>, y: Num<R>) =>
 /** @About A numeric modulus operator that automatically determines whether to be reative or not. */
 const mod = (x: Num<R>, y: Num<R>) =>
   computed(() => Var.toLit(x) % Var.toLit(y), [x, y]);
+
+/** @About Round up to integer. */
+const ceil = (x: Num<R>) => computed(() => Math.ceil(Var.toLit(x)), [x]);
+
+/** @About Round to integer. */
+const round = (x: Num<R>) => computed(() => Math.round(Var.toLit(x)), [x]);
+
+/** @About Round down to integer. */
+const floor = (x: Num<R>) => computed(() => Math.floor(Var.toLit(x)), [x]);

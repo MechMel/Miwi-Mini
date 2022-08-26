@@ -7,10 +7,10 @@
 // SECTION: Contents
 type Contents = _SingleContentTypes | Contents[]; //Text | Bool | Num | Widget | Contents[];
 type _SingleContentTypes =
-  | string
-  | boolean
-  | number
-  | Required<Icon>
+  | Str<R>
+  | Bool<R>
+  | Num<R>
+  | Required<IconLiteral>
   | Required<Widget>;
 const isContent = function (possibleContent: any): possibleContent is Contents {
   let isActuallyContent = false;
@@ -102,6 +102,54 @@ _addNewContentCompiler({
     return myInfo;
   },
 });
+
+/** @About Since we don't have access to JSX or React, we use this instead as a short hand
+ * for creating HTML elements. */
+function createHtmlElement(params: {
+  tag: string;
+  content?: Node[] | Node;
+  onClick?: () => void;
+  style?: { [key: string]: Str<R> | Num<R> | Bool<R> | undefined };
+  elementType?: string;
+  id?: string;
+  class?: string;
+}) {
+  const htmlElement = document.createElement(params.tag);
+
+  // Set Id and Class
+  if (exists(params.id)) htmlElement.setAttribute(`id`, params.id as any);
+  if (exists(params.class))
+    htmlElement.setAttribute(`class`, params.class as any);
+  if (exists(params.elementType))
+    htmlElement.setAttribute(`type`, params.elementType as any);
+
+  // Set onClick
+  if (exists(params.onClick)) htmlElement.onclick = params.onClick;
+
+  // Set style
+  if (exists(params.style)) {
+    for (const key in params.style) {
+      setLWhenRChanges(
+        // We need to do "?? ``" because setting a style prop to undefined doesn't clear the old value
+        (x) => ((htmlElement.style as any)[key] = Var.toLit(x) ?? ``),
+        params.style[key],
+      );
+    }
+  }
+
+  // Add children
+  if (exists(params.content)) {
+    if (Array.isArray(params.content)) {
+      for (const child of params.content) {
+        htmlElement.appendChild(child);
+      }
+    } else {
+      htmlElement.appendChild(params.content);
+    }
+  }
+
+  return htmlElement;
+}
 
 //
 //
@@ -199,7 +247,7 @@ type _WidgetStylePart = {
   preferParent?: { [key: string]: _WidgetCompilerStyleProp };
   preferChild?: { [key: string]: _WidgetCompilerStyleProp };
 };
-type _BasicWidgetCompilerStyleProp = string | number | boolean | undefined;
+type _BasicWidgetCompilerStyleProp = Str<R> | Num<R> | Bool<R> | undefined;
 type _WidgetCompilerStyleProp =
   | Var<R, _BasicWidgetCompilerStyleProp>
   | _BasicWidgetCompilerStyleProp;
@@ -219,45 +267,10 @@ _addNewContentCompiler({
       startZIndex: params.startZIndex,
     });
 
-    // Create the html elements
-    const newChildElement =
-      Var.toLit(params.contents.contentAxis) === axis.z
-        ? createHtmlElement({
-            tag: `div`,
-            style: {
-              flexGrow: 1,
-              alignSelf: `stretch`,
-              backgroundColor: `green`,
-            },
-            content: childrenInfo.htmlElements,
-          })
-        : undefined;
-    const newParentElement = createHtmlElement({
-      tag: params.contents.htmlTag,
-      content: exists(newChildElement)
-        ? [newChildElement]
-        : childrenInfo.htmlElements,
-    });
-    if (exists(params.contents.onTap)) {
-      newParentElement.onclick = params.contents.onTap;
-    }
-
     // Compile the styles
-    const setUpStyleProp = function (
-      key: string,
-      prop: _WidgetCompilerStyleProp,
-      htmlElement: HTMLElement,
-    ) {
-      if (Var.isVar(prop)) {
-        // We need to do "?? ``" because setting a style prop to undefined doesn't clear the old value
-        prop.onChange.addListener(
-          () => ((htmlElement.style as any)[key] = prop.value ?? ``),
-        );
-        (htmlElement.style as any)[key] = prop.value ?? ``;
-      } else {
-        (htmlElement.style as any)[key] = prop;
-      }
-    };
+    const shouldCreateChild = Var.toLit(params.contents.contentAxis) === axis.z;
+    const parentStyle: any = {};
+    const childStyle: any = {};
     for (const i in widgetStyleBuilders) {
       const newProps = widgetStyleBuilders[i]({
         widget: params.contents,
@@ -266,14 +279,14 @@ _addNewContentCompiler({
         startZIndex: params.startZIndex,
       });
       for (const key in newProps.preferParent) {
-        setUpStyleProp(key, newProps.preferParent[key], newParentElement);
+        parentStyle[key] = newProps.preferParent[key];
       }
       for (const key in newProps.preferChild) {
-        setUpStyleProp(
-          key,
-          newProps.preferChild[key],
-          exists(newChildElement) ? newChildElement : newParentElement,
-        );
+        if (shouldCreateChild) {
+          childStyle[key] = newProps.preferChild[key];
+        } else {
+          parentStyle[key] = newProps.preferChild[key];
+        }
       }
     }
 
@@ -285,7 +298,27 @@ _addNewContentCompiler({
         childrenInfo.heightGrows,
       ),
       greatestZIndex: childrenInfo.greatestZIndex,
-      htmlElements: [newParentElement],
+      htmlElements: [
+        createHtmlElement({
+          tag: params.contents.htmlTag,
+          onClick: params.contents.onTap,
+          style: parentStyle,
+          content: shouldCreateChild
+            ? [
+                createHtmlElement({
+                  tag: `div`,
+                  style: {
+                    flexGrow: 1,
+                    alignSelf: `stretch`,
+                    backgroundColor: `green`,
+                    ...childStyle,
+                  },
+                  content: childrenInfo.htmlElements,
+                }),
+              ]
+            : childrenInfo.htmlElements,
+        }),
+      ],
     };
   },
 });
@@ -737,13 +770,22 @@ const _inlineContentCloseTag = `%@#$$`;
 _addNewContentCompiler({
   isThisType: (contents: Contents) => exists((contents as any)?.icon),
   compile: function (params: {
-    contents: Icon;
+    contents: IconLiteral;
     parent: Widget;
     startZIndex: number;
   }): _ContentCompilationResults {
     const htmlElement = createHtmlElement({
       tag: `span`,
       class: `material-symbols-outlined`,
+      style: {
+        width: numToIconSize(params.parent.textSize),
+        height: numToIconSize(params.parent.textSize),
+        color: params.parent.textColor,
+        display: `inline-block`,
+        verticalAlign: `middle`,
+        textAlign: `center`,
+        fontSize: numToIconSize(params.parent.textSize),
+      },
       content: [
         document.createTextNode(
           params.contents.icon.startsWith(_numIconTag)
@@ -752,27 +794,6 @@ _addNewContentCompiler({
         ),
       ],
     });
-    const style = {
-      width: numToIconSize(params.parent.textSize),
-      height: numToIconSize(params.parent.textSize),
-      color: params.parent.textColor,
-      display: `inline-block`,
-      verticalAlign: `middle`,
-      textAlign: `center`,
-      fontSize: numToIconSize(params.parent.textSize),
-    };
-    for (const key in style) {
-      const prop = (style as any)[key];
-      if (Var.isVar(prop)) {
-        // We need to do "?? ``" because setting a style prop to undefined doesn't clear the old value
-        prop.onChange.addListener(
-          () => ((htmlElement.style as any)[key] = prop.value ?? ``),
-        );
-        (htmlElement.style as any)[key] = prop.value ?? ``;
-      } else {
-        (htmlElement.style as any)[key] = prop;
-      }
-    }
     return {
       htmlElements: [htmlElement],
       widthGrows: false,
@@ -782,6 +803,7 @@ _addNewContentCompiler({
   },
 });
 
+/** @ About converts from standard Moa units to a size that makes sense for icons. */
 const numToIconSize = (num: Num<R>) => numToStandardHtmlUnit(mul(0.9, num));
 
 //
@@ -793,9 +815,9 @@ const numToIconSize = (num: Num<R>) => numToStandardHtmlUnit(mul(0.9, num));
 // SECTION: Content Literals
 _addNewContentCompiler({
   isThisType: (contents: Contents) =>
-    typeof contents === `string` ||
-    typeof contents === `number` ||
-    typeof contents === `boolean`,
+    Var.toLit(Str.is(contents)) ||
+    Var.toLit(Num.is(contents)) ||
+    Var.toLit(Bool.is(contents)),
   compile: function (params: {
     contents: string | number | boolean;
     parent: Widget;
@@ -862,41 +884,34 @@ _addNewContentCompiler({
         );
       }
     } else {
-      paragraphParts.push(document.createTextNode(params.contents.toString()));
+      const textNode = document.createTextNode(params.contents.toString());
+      setLWhenRChanges(
+        (x) => (textNode.nodeValue = x.toString()),
+        params.contents,
+      );
+      paragraphParts.push(textNode);
     }
 
     const htmlElement = createHtmlElement({
       tag: `p`,
+      style: {
+        color: params.parent.textColor,
+        fontFamily: `Roboto`,
+        fontSize: numToFontSize(params.parent.textSize),
+        fontWeight: ifel(params.parent.textIsBold, `bold`, ``),
+        fontStyle: ifel(params.parent.textIsItalic, `italic`, ``),
+        textAlign:
+          params.parent.contentAlign.x === -1
+            ? `left`
+            : params.parent.contentAlign.x === 0
+            ? `center`
+            : `right`,
+        margin: 0,
+        padding: 0,
+        zIndex: params.startZIndex,
+      },
       content: paragraphParts,
     });
-    const style = {
-      color: params.parent.textColor,
-      fontFamily: `Roboto`,
-      fontSize: numToFontSize(params.parent.textSize),
-      fontWeight: ifel(params.parent.textIsBold, `bold`, undefined),
-      fontStyle: ifel(params.parent.textIsItalic, `italic`, undefined),
-      textAlign:
-        params.parent.contentAlign.x === -1
-          ? `left`
-          : params.parent.contentAlign.x === 0
-          ? `center`
-          : `right`,
-      margin: 0,
-      padding: 0,
-      zIndex: params.startZIndex,
-    };
-    for (const key in style) {
-      const prop = (style as any)[key];
-      if (Var.isVar(prop)) {
-        // We need to do "?? ``" because setting a style prop to undefined doesn't clear the old value
-        prop.onChange.addListener(
-          () => ((htmlElement.style as any)[key] = prop.value ?? ``),
-        );
-        (htmlElement.style as any)[key] = prop.value ?? ``;
-      } else {
-        (htmlElement.style as any)[key] = prop;
-      }
-    }
     return {
       widthGrows: false,
       heightGrows: false,
