@@ -741,29 +741,40 @@ _addNewContentCompiler({
     parent: Widget;
     startZIndex: number;
   }): _ContentCompilationResults {
-    return {
-      htmlElements: [
-        createHtmlElement({
-          tag: `span`,
-          class: `material-symbols-outlined`,
-          style: {
-            width: Var.toLit(numToIconSize(params.parent.textSize)),
-            height: Var.toLit(numToIconSize(params.parent.textSize)),
-            color: Var.toLit(params.parent.textColor),
-            display: `inline-block`,
-            verticalAlign: `middle`,
-            textAlign: `center`,
-            fontSize: Var.toLit(numToIconSize(params.parent.textSize)),
-          },
-          content: [
-            document.createTextNode(
-              params.contents.icon.startsWith(_numIconTag)
-                ? params.contents.icon.substring(_numIconTag.length)
-                : params.contents.icon,
-            ),
-          ],
-        }),
+    const htmlElement = createHtmlElement({
+      tag: `span`,
+      class: `material-symbols-outlined`,
+      content: [
+        document.createTextNode(
+          params.contents.icon.startsWith(_numIconTag)
+            ? params.contents.icon.substring(_numIconTag.length)
+            : params.contents.icon,
+        ),
       ],
+    });
+    const style = {
+      width: numToIconSize(params.parent.textSize),
+      height: numToIconSize(params.parent.textSize),
+      color: params.parent.textColor,
+      display: `inline-block`,
+      verticalAlign: `middle`,
+      textAlign: `center`,
+      fontSize: numToIconSize(params.parent.textSize),
+    };
+    for (const key in style) {
+      const prop = (style as any)[key];
+      if (Var.isVar(prop)) {
+        // We need to do "?? ``" because setting a style prop to undefined doesn't clear the old value
+        prop.onChange.addListener(
+          () => ((htmlElement.style as any)[key] = prop.value ?? ``),
+        );
+        (htmlElement.style as any)[key] = prop.value ?? ``;
+      } else {
+        (htmlElement.style as any)[key] = prop;
+      }
+    }
+    return {
+      htmlElements: [htmlElement],
       widthGrows: false,
       heightGrows: false,
       greatestZIndex: params.startZIndex,
@@ -856,26 +867,6 @@ _addNewContentCompiler({
 
     const htmlElement = createHtmlElement({
       tag: `p`,
-      style: {
-        color: Var.toLit(params.parent.textColor),
-        fontFamily: `Roboto`,
-        fontSize: Var.toLit(numToFontSize(params.parent.textSize)),
-        fontWeight: Var.toLit(
-          ifel(params.parent.textIsBold, `bold`, undefined),
-        ),
-        fontStyle: Var.toLit(
-          ifel(params.parent.textIsItalic, `italic`, undefined),
-        ),
-        textAlign:
-          params.parent.contentAlign.x === -1
-            ? `left`
-            : params.parent.contentAlign.x === 0
-            ? `center`
-            : `right`,
-        margin: 0,
-        padding: 0,
-        zIndex: params.startZIndex,
-      },
       content: paragraphParts,
     });
     const style = {
