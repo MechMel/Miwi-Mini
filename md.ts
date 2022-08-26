@@ -3,8 +3,8 @@
 // box.column([...]);
 // box.stack([...]);
 const box = widgetTemplate({
-  width: size.basedOnContents,
-  height: size.basedOnContents,
+  width: size.shrink,
+  height: size.shrink,
   onTap: undefined,
   cornerRadius: 0,
   outlineColor: colors.transparent,
@@ -57,7 +57,7 @@ const pageBody = widgetTemplate({
 // card.stack(...);
 const card = widgetTemplate({
   width: size.grow,
-  height: size.basedOnContents,
+  height: size.shrink,
   onTap: undefined,
   textSize: 1,
   textIsBold: false,
@@ -83,8 +83,8 @@ const card = widgetTemplate({
 const button = readonlyObj({
   /** @About A button with a solid, colored background. */
   solid: widgetTemplate({
-    width: size.basedOnContents,
-    height: size.basedOnContents,
+    width: size.shrink,
+    height: size.shrink,
     onTap: undefined,
     textSize: 1,
     textIsBold: false,
@@ -108,8 +108,8 @@ const button = readonlyObj({
 
   /** @About A white button with colored text and a colored outline. */
   outlined: widgetTemplate({
-    width: size.basedOnContents,
-    height: size.basedOnContents,
+    width: size.shrink,
+    height: size.shrink,
     onTap: undefined,
     textSize: 1,
     textIsBold: false,
@@ -133,7 +133,7 @@ const button = readonlyObj({
 
   /** @About All button where both ends are circular. */
   pill: widgetTemplate({
-    width: size.basedOnContents,
+    width: size.shrink,
     height: 2,
     onTap: undefined,
     textSize: 1,
@@ -185,7 +185,7 @@ const button = readonlyObj({
 /** @About An app bar is the colored bar at the top of a lot of apps. */
 const appBar = widgetTemplate({
   width: size.grow,
-  height: size.basedOnContents,
+  height: size.shrink,
   onTap: undefined,
   textSize: 1.5,
   textIsBold: true,

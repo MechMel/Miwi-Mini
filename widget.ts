@@ -302,8 +302,7 @@ type _SizeGrowConfig = {
   flex: number;
 };
 const _getSizeGrows = (givenSize: Size, childGrows: boolean) =>
-  _isSizeGrowConfig(givenSize) ||
-  (givenSize == size.basedOnContents && childGrows);
+  _isSizeGrowConfig(givenSize) || (givenSize == size.shrink && childGrows);
 function _isSizeGrowConfig(
   possibleGrowth: any,
 ): possibleGrowth is _SizeGrowConfig {
@@ -313,7 +312,7 @@ const size = readonlyObj({
   exactly: function (num: number): Size {
     return num;
   },
-  basedOnContents: -1 as Size,
+  shrink: -1 as Size,
   grow: (function () {
     const buildGrowth = function (flex: number) {
       return { flex: flex };
@@ -332,7 +331,7 @@ widgetStyleBuilders.push(function (params: {
     const exactSize =
       typeof givenSize === `string`
         ? givenSize
-        : givenSize !== size.basedOnContents && !sizeGrows
+        : givenSize !== size.shrink && !sizeGrows
         ? old_numToStandardHtmlUnit(givenSize as number)
         : undefined;
     return [exactSize, sizeGrows];
@@ -854,36 +853,64 @@ _addNewContentCompiler({
     } else {
       paragraphParts.push(document.createTextNode(params.contents.toString()));
     }
+
+    const htmlElement = createHtmlElement({
+      tag: `p`,
+      style: {
+        color: Var.toLit(params.parent.textColor),
+        fontFamily: `Roboto`,
+        fontSize: Var.toLit(numToFontSize(params.parent.textSize)),
+        fontWeight: Var.toLit(
+          ifel(params.parent.textIsBold, `bold`, undefined),
+        ),
+        fontStyle: Var.toLit(
+          ifel(params.parent.textIsItalic, `italic`, undefined),
+        ),
+        textAlign:
+          params.parent.contentAlign.x === -1
+            ? `left`
+            : params.parent.contentAlign.x === 0
+            ? `center`
+            : `right`,
+        margin: 0,
+        padding: 0,
+        zIndex: params.startZIndex,
+      },
+      content: paragraphParts,
+    });
+    const style = {
+      color: params.parent.textColor,
+      fontFamily: `Roboto`,
+      fontSize: numToFontSize(params.parent.textSize),
+      fontWeight: ifel(params.parent.textIsBold, `bold`, undefined),
+      fontStyle: ifel(params.parent.textIsItalic, `italic`, undefined),
+      textAlign:
+        params.parent.contentAlign.x === -1
+          ? `left`
+          : params.parent.contentAlign.x === 0
+          ? `center`
+          : `right`,
+      margin: 0,
+      padding: 0,
+      zIndex: params.startZIndex,
+    };
+    for (const key in style) {
+      const prop = (style as any)[key];
+      if (Var.isVar(prop)) {
+        // We need to do "?? ``" because setting a style prop to undefined doesn't clear the old value
+        prop.onChange.addListener(
+          () => ((htmlElement.style as any)[key] = prop.value ?? ``),
+        );
+        (htmlElement.style as any)[key] = prop.value ?? ``;
+      } else {
+        (htmlElement.style as any)[key] = prop;
+      }
+    }
     return {
       widthGrows: false,
       heightGrows: false,
       greatestZIndex: params.startZIndex,
-      htmlElements: [
-        createHtmlElement({
-          tag: `p`,
-          style: {
-            color: Var.toLit(params.parent.textColor),
-            fontFamily: `Roboto`,
-            fontSize: Var.toLit(numToFontSize(params.parent.textSize)),
-            fontWeight: Var.toLit(
-              ifel(params.parent.textIsBold, `bold`, undefined),
-            ),
-            fontStyle: Var.toLit(
-              ifel(params.parent.textIsItalic, `italic`, undefined),
-            ),
-            textAlign:
-              params.parent.contentAlign.x === -1
-                ? `left`
-                : params.parent.contentAlign.x === 0
-                ? `center`
-                : `right`,
-            margin: 0,
-            padding: 0,
-            zIndex: params.startZIndex,
-          },
-          content: paragraphParts,
-        }),
-      ],
+      htmlElements: [htmlElement],
     };
   },
 });
@@ -954,8 +981,8 @@ const page = function (
       compileContentsToHtml({
         contents: _pageWidget(options, contents),
         parent: {
-          width: size.basedOnContents,
-          height: size.basedOnContents,
+          width: size.shrink,
+          height: size.shrink,
           cornerRadius: 0,
           outlineColor: colors.transparent,
           outlineSize: 0,
