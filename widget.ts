@@ -85,7 +85,7 @@ _addNewContentCompiler({
         contents: params.contents[i],
         parent: params.parent,
         startZIndex:
-          params.parent.contentAxis === axis.z
+          Var.toLit(params.parent.contentAxis) === axis.z
             ? myInfo.greatestZIndex + 1
             : params.startZIndex,
       });
@@ -115,24 +115,24 @@ interface Widget {
   width: Size;
   height: Size;
   cornerRadius: Num<R>;
-  outlineColor: ColorLiteralRGB;
-  outlineSize: number;
+  outlineColor: Color<R>;
+  outlineSize: Num<R>;
   background: Material<R>;
-  shadowSize: number;
+  shadowSize: Num<R>;
   shadowDirection: Align;
   onTap: (() => void) | undefined;
   //interaction: { onTap: function() {}, onDoubleTap: function() {}, onLongPress: function() {}, }
-  padding: Padding;
+  padding: Num<R>;
   contentAlign: Align;
-  contentAxis: Axis;
-  contentIsScrollableX: boolean;
-  contentIsScrollableY: boolean;
-  contentSpacing: Spacing;
+  contentAxis: Axis<R>;
+  contentIsScrollableX: Bool<R>;
+  contentIsScrollableY: Bool<R>;
+  contentSpacing: Spacing<R>;
   // contentStyle: style.deferToParent,
-  textSize: number;
-  textIsBold: boolean;
-  textIsItalic: boolean;
-  textColor: ColorLiteralRGB;
+  textSize: Num<R>;
+  textIsBold: Bool<R>;
+  textIsItalic: Bool<R>;
+  textColor: Color<R>;
   contents: Contents;
   htmlTag: string;
   toString: () => string;
@@ -221,7 +221,7 @@ _addNewContentCompiler({
 
     // Create the html elements
     const newChildElement =
-      params.contents.contentAxis === axis.z
+      Var.toLit(params.contents.contentAxis) === axis.z
         ? createHtmlElement({
             tag: `div`,
             style: {
@@ -333,7 +333,7 @@ widgetStyleBuilders.push(function (params: {
       typeof givenSize === `string`
         ? givenSize
         : givenSize !== size.basedOnContents && !sizeGrows
-        ? numToStandardHtmlUnit(givenSize as number)
+        ? old_numToStandardHtmlUnit(givenSize as number)
         : undefined;
     return [exactSize, sizeGrows];
   };
@@ -357,7 +357,7 @@ widgetStyleBuilders.push(function (params: {
       minHeight: exactHeight,
       maxHeight: exactHeight,
       flexGrow:
-        params.parent.contentAxis === axis.vertical
+        Var.toLit(params.parent.contentAxis) === axis.vertical
           ? _isSizeGrowConfig(params.widget.height)
             ? params.widget.height.flex
             : heightGrows
@@ -369,8 +369,9 @@ widgetStyleBuilders.push(function (params: {
           ? 1
           : undefined,
       alignSelf:
-        (params.parent.contentAxis === axis.horizontal && heightGrows) ||
-        (params.parent.contentAxis === axis.vertical && widthGrows)
+        (Var.toLit(params.parent.contentAxis) === axis.horizontal &&
+          heightGrows) ||
+        (Var.toLit(params.parent.contentAxis) === axis.vertical && widthGrows)
           ? `stretch`
           : undefined,
     },
@@ -381,9 +382,9 @@ widgetStyleBuilders.push(function (params: {
   };
 });
 
-const numToStandardHtmlUnit = (num: Num<R>) =>
+const old_numToStandardHtmlUnit = (num: Num<R>) =>
   `${mul(num, div(_pageWidthVmin, 24))}vmin`;
-const numToStandardHtmlUnit2 = (num: Num<R>) =>
+const numToStandardHtmlUnit = (num: Num<R>) =>
   computed(() => `${mul(num, div(_pageWidthVmin, 24))}vmin`, [num]);
 
 //
@@ -408,21 +409,21 @@ const Color = Var.subtype(
 );
 type ColorLiteralRGB = `#${string}`;
 const colors = readonlyObj({
-  white: `#ffffffff` as ColorLiteralRGB,
-  almostWhite: `#f9fafdff` as ColorLiteralRGB,
-  pink: `#e91e63ff` as ColorLiteralRGB,
-  red: `#f44336ff` as ColorLiteralRGB,
-  orange: `#ff9800ff` as ColorLiteralRGB,
-  yellow: `#ffea00ff` as ColorLiteralRGB,
-  green: `#4caf50ff` as ColorLiteralRGB,
-  teal: `#009688ff` as ColorLiteralRGB,
-  blue: `#2196f3ff` as ColorLiteralRGB,
-  purple: `#9c27b0ff` as ColorLiteralRGB,
-  brown: `#795548ff` as ColorLiteralRGB,
-  grey: `#9e9e9eff` as ColorLiteralRGB,
-  black: `#000000ff` as ColorLiteralRGB,
-  transparent: `#ffffff00` as ColorLiteralRGB,
-});
+  white: `#ffffffff`,
+  almostWhite: `#f9fafdff`,
+  pink: `#e91e63ff`,
+  red: `#f44336ff`,
+  orange: `#ff9800ff`,
+  yellow: `#ffea00ff`,
+  green: `#4caf50ff`,
+  teal: `#009688ff`,
+  blue: `#2196f3ff`,
+  purple: `#9c27b0ff`,
+  brown: `#795548ff`,
+  grey: `#9e9e9eff`,
+  black: `#000000ff`,
+  transparent: `#ffffff00`,
+} as const);
 const _imageExtensions = [`.ico`, `.svg`, `.png`, `.jpg`, `.jpeg`] as const;
 type ImageRefLiteral = `${string}${typeof _imageExtensions[number]}`;
 type ImageRef<P extends R | RW> = VarSubtype<P, ImageRefLiteral>;
@@ -439,14 +440,20 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
   return {
     preferParent: {
       // Corner Radius
-      borderRadius: numToStandardHtmlUnit2(params.widget.cornerRadius),
+      borderRadius: numToStandardHtmlUnit(params.widget.cornerRadius),
 
-      // Border
+      // Outline
       border: `none`,
-      outline: `${numToStandardHtmlUnit(params.widget.outlineSize)} solid ${
-        params.widget.outlineColor
-      }`,
-      outlineOffset: `-` + numToStandardHtmlUnit(params.widget.outlineSize),
+      outline: concat(
+        numToStandardHtmlUnit(params.widget.outlineSize),
+        ` solid `,
+        params.widget.outlineColor,
+      ),
+
+      outlineOffset: concat(
+        `-`,
+        numToStandardHtmlUnit(params.widget.outlineSize),
+      ),
 
       // Background
       backgroundColor: ifel(
@@ -465,13 +472,19 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
       backgroundAttachment: `local`,
 
       // Shadow
-      boxShadow: `${numToStandardHtmlUnit(
-        0.12 * params.widget.shadowSize * params.widget.shadowDirection.x,
-      )} ${numToStandardHtmlUnit(
-        -0.12 * params.widget.shadowSize * params.widget.shadowDirection.y,
-      )} ${numToStandardHtmlUnit(
-        0.225 * params.widget.shadowSize,
-      )} ${numToStandardHtmlUnit(0)} ${colors.grey}`,
+      boxShadow: concat(
+        numToStandardHtmlUnit(
+          mul(0.12, params.widget.shadowSize, params.widget.shadowDirection.x),
+        ),
+        ` `,
+        numToStandardHtmlUnit(
+          mul(-0.12, params.widget.shadowSize, params.widget.shadowDirection.y),
+        ),
+        ` `,
+        numToStandardHtmlUnit(mul(0.225, params.widget.shadowSize)),
+        ` 0 `,
+        colors.grey,
+      ),
     },
   };
 });
@@ -518,34 +531,34 @@ widgetStyleBuilders.push(
     childrenInfo: _ContentCompilationResults;
   }) => {
     const myPosition =
-      params.parent.contentAxis === axis.z ? `absolute` : `relative`;
+      Var.toLit(params.parent.contentAxis) === axis.z ? `absolute` : `relative`;
     return {
       preferParent: {
         // Algin self when in a stack
         position: myPosition,
         margin:
-          params.parent.contentAxis === axis.z
+          Var.toLit(params.parent.contentAxis) === axis.z
             ? `${params.parent.contentAlign.x === 0 ? `auto` : 0} ${
                 params.parent.contentAlign.y === 0 ? `auto` : 0
               }`
             : 0,
         left:
-          params.parent.contentAxis === axis.z &&
+          Var.toLit(params.parent.contentAxis) === axis.z &&
           params.parent.contentAlign.x === -1
             ? 0
             : undefined,
         top:
-          params.parent.contentAxis === axis.z &&
+          Var.toLit(params.parent.contentAxis) === axis.z &&
           params.parent.contentAlign.y === 1
             ? 0
             : undefined,
         right:
-          params.parent.contentAxis === axis.z &&
+          Var.toLit(params.parent.contentAxis) === axis.z &&
           params.parent.contentAlign.x === 1
             ? 0
             : undefined,
         bottom:
-          params.parent.contentAxis === axis.z &&
+          Var.toLit(params.parent.contentAxis) === axis.z &&
           params.parent.contentAlign.y === -1
             ? 0
             : undefined,
@@ -604,17 +617,24 @@ widgetStyleBuilders.push(
 //
 
 // SECTION: Content Axis
-type Axis = `horizontal` | `vertical` | `z`;
+type AxisLiteral = typeof axis[keyof typeof axis];
+type Axis<P extends R | RW> = VarSubtype<P, AxisLiteral>;
+const Axis = Var.subtype((x: any): x is AxisLiteral =>
+  Object.values(axis).includes(x),
+);
 const axis = readonlyObj({
-  horizontal: `horizontal` as Axis,
-  vertical: `vertical` as Axis,
-  z: `z` as Axis,
-});
+  horizontal: `horizontal`,
+  vertical: `vertical`,
+  z: `z`,
+} as const);
 widgetStyleBuilders.push((params: { widget: Widget; startZIndex: number }) => {
   return {
     preferParent: {
-      flexDirection:
-        params.widget.contentAxis === axis.vertical ? `column` : `row`,
+      flexDirection: ifel(
+        equ(params.widget.contentAxis, axis.vertical),
+        `column`,
+        `row`,
+      ),
       zIndex: params.startZIndex,
     },
   };
@@ -630,12 +650,16 @@ widgetStyleBuilders.push((params: { widget: Widget; startZIndex: number }) => {
 widgetStyleBuilders.push((params: { widget: Widget }) => {
   return {
     preferParent: {
-      overflowX: params.widget.contentIsScrollableX
-        ? `overlay` // Scroll when nesscary, and float above contents
-        : undefined, //`hidden`,
-      overflowY: params.widget.contentIsScrollableY
-        ? `auto` // Scroll when nesscary, and float above contents
-        : undefined, //`hidden`,
+      overflowX: ifel(
+        params.widget.contentIsScrollableX,
+        `overlay`, // Scroll when nesscary, and float above contents
+        undefined, //`hidden`,
+      ),
+      overflowY: ifel(
+        params.widget.contentIsScrollableY,
+        `auto`, // Scroll when nesscary, and float above contents
+        undefined, //`hidden`,
+      ),
       scrollbarWidth: `thin`,
       scrollbarColor: `#e3e3e3 transparent`,
     },
@@ -649,25 +673,29 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
 //
 
 // SECTION: Content Spacing
-type Spacing = `space-between` | `space-around` | `space-evenly` | number;
+type SpacingLiteral = number | typeof spacing[keyof typeof spacing];
+type Spacing<P extends R | RW> = VarSubtype<P, SpacingLiteral>;
+const Spacing = Var.subtype(
+  (x: any): x is SpacingLiteral =>
+    typeof x === `number` || Object.values(spacing).includes(x),
+);
 const spacing = readonlyObj({
-  spaceBetween: `space-between` as Spacing,
-  spaceAround: `space-around` as Spacing,
-  spaceEvenly: `space-evenly` as Spacing,
-  exactly: (num: number) => num as Spacing,
-});
+  spaceBetween: `space-between`,
+  spaceAround: `space-around`,
+  spaceEvenly: `space-evenly`,
+} as const);
 widgetStyleBuilders.push((params: { widget: Widget }) => {
   return {
     preferChild: {
       rowGap:
         params.widget.contentAxis === axis.vertical &&
         typeof params.widget.contentSpacing === `number`
-          ? numToStandardHtmlUnit(params.widget.contentSpacing)
+          ? old_numToStandardHtmlUnit(params.widget.contentSpacing)
           : undefined,
       columnGap:
         params.widget.contentAxis === axis.horizontal &&
         typeof params.widget.contentSpacing === `number`
-          ? numToStandardHtmlUnit(params.widget.contentSpacing)
+          ? old_numToStandardHtmlUnit(params.widget.contentSpacing)
           : undefined,
     },
   };
@@ -695,9 +723,7 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
   };
 });
 
-function numToFontSize(num: number) {
-  return numToStandardHtmlUnit(0.825 * num);
-}
+const numToFontSize = (num: Num<R>) => numToStandardHtmlUnit(mul(0.825, num));
 
 //
 //
@@ -722,13 +748,13 @@ _addNewContentCompiler({
           tag: `span`,
           class: `material-symbols-outlined`,
           style: {
-            width: numToIconSize(params.parent.textSize),
-            height: numToIconSize(params.parent.textSize),
-            color: params.parent.textColor,
+            width: Var.toLit(numToIconSize(params.parent.textSize)),
+            height: Var.toLit(numToIconSize(params.parent.textSize)),
+            color: Var.toLit(params.parent.textColor),
             display: `inline-block`,
             verticalAlign: `middle`,
             textAlign: `center`,
-            fontSize: numToIconSize(params.parent.textSize),
+            fontSize: Var.toLit(numToIconSize(params.parent.textSize)),
           },
           content: [
             document.createTextNode(
@@ -746,9 +772,7 @@ _addNewContentCompiler({
   },
 });
 
-function numToIconSize(num: number) {
-  return numToStandardHtmlUnit(0.9 * num);
-}
+const numToIconSize = (num: Num<R>) => numToStandardHtmlUnit(mul(0.9, num));
 
 //
 //
@@ -838,11 +862,15 @@ _addNewContentCompiler({
         createHtmlElement({
           tag: `p`,
           style: {
-            color: params.parent.textColor,
+            color: Var.toLit(params.parent.textColor),
             fontFamily: `Roboto`,
-            fontSize: numToFontSize(params.parent.textSize),
-            fontWeight: params.parent.textIsBold ? `bold` : undefined,
-            fontStyle: params.parent.textIsItalic ? `italic` : undefined,
+            fontSize: Var.toLit(numToFontSize(params.parent.textSize)),
+            fontWeight: Var.toLit(
+              ifel(params.parent.textIsBold, `bold`, undefined),
+            ),
+            fontStyle: Var.toLit(
+              ifel(params.parent.textIsItalic, `italic`, undefined),
+            ),
             textAlign:
               params.parent.contentAlign.x === -1
                 ? `left`

@@ -125,6 +125,14 @@ type VarToLit<V> = V extends Var<R, any> ? V[`value`] : V;
  */
 type VarSubtype<P extends R | RW, T> = VarOrLit<Var<P, T>>;
 
+/** @About Checks whether or not the two given Vars are equal. */
+const equ = (x: VarOrLit<Var<R, any>>, y: VarOrLit<Var<R, any>>) =>
+  computed(() => Var.toLit(x) === Var.toLit(y), [x, y]);
+
+/** @About Sets the left hand value to the right hand value. */
+const set = (r: VarOrLit<Var<R, any>>, l: VarOrLit<Var<R, any>>) =>
+  Var.isVar(r) ? ((r as any).value = Var.toLit(l)) : (r = Var.toLit(l));
+
 /** @About An easy short hand to create a computed, read-only Var. */
 const computed = function <T>(
   compute: () => T,
