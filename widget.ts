@@ -167,7 +167,7 @@ interface Widget {
   outlineSize: Num<R>;
   background: Material<R>;
   shadowSize: Num<R>;
-  shadowDirection: AlignLit;
+  shadowDirection: Align<R>;
   onTap: (() => void) | undefined;
   //interaction: { onTap: function() {}, onDoubleTap: function() {}, onLongPress: function() {}, }
   padding: Num<R>;
@@ -543,6 +543,7 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
 type Align<P extends R | RW = RW> = VarSubtype<P, AlignLit>;
 const Align = Var.subtype((x): x is AlignLit => exists(x?.x) && exists(x?.y));
 type AlignLit = { x: Num<RW>; y: Num<RW> };
+const aaaaa: Num<RW> extends VarOrLit<R, infer T2> ? T2 : Num<RW> = 0 as any;
 const align = readonlyObj({
   topLeft: { x: -1, y: 1 },
   topCenter: { x: 0, y: 1 },

@@ -63,11 +63,10 @@ type Var<P extends R | RW, T> = {
       ? T[Key]
       : Var<
           GetVarPerms<T[Key]>,
-          T[Key] extends Var<R, any> ? T[Key][`value`] : T[Key]
+          T[Key] extends VarOrLit<R, infer T2> ? T2 : T[Key]
         >
     : undefined;
 };
-type Wrap<T> = Map<string, T>;
 const Var = callable({
   /** @About Creates a Var from an inital value. */
   call: <P extends R | RW, T>(val: T) =>
@@ -86,16 +85,17 @@ const Var = callable({
   /** @About Creates a Var from read and write functions. */
   fromFuncs: <P extends R | RW, T>(
     funcs: VarFromFuncsParams<P, T>,
-  ): Var<P, T> =>
-    new Proxy(
+  ): Var<P, T> => {
+    const _gettersMap: { [key: string | symbol | number]: Var<RW, any> } = {};
+    return new Proxy(
       {
         toString() {
           return String(funcs.read());
         },
       } as any,
       {
-        get(obj, prop, reciever): any {
-          switch (prop) {
+        get(obj, propKey, reciever): any {
+          switch (propKey) {
             case `value`:
               return funcs.read();
             case `onChange`:
@@ -106,35 +106,42 @@ const Var = callable({
               return () => String(funcs.read());
             // This should only get triggered if this is an object Var.
             default:
-              const propVal = (funcs.read() as any)[prop];
+              const propVal = (funcs.read() as any)[propKey];
               if (propVal === undefined || typeof propVal === `function`) {
                 return propVal;
               } else {
-                const onChange = VarEvent();
-                let oldPropOnChange: VarEvent | undefined = undefined;
-                funcs.onChange.addListener(() => {
-                  if (exists(oldPropOnChange))
-                    oldPropOnChange.removeListener(onChange.trigger);
-                  const inst: any = funcs.read();
-                  console.log(`changed: ${inst[prop]}`);
-                  if (Var.isVar(inst[prop])) {
-                    inst[prop].onChange.addListener(onChange.trigger);
-                    oldPropOnChange = inst[prop].onChange;
-                  }
-                  onChange.trigger();
-                });
-                return Var.fromFuncs({
-                  read: () => Var.toLit((funcs.read() as any)[prop]),
-                  write: (newVal) => {
-                    const inst: any = funcs.read();
-                    if (Var.isVar(inst[prop])) {
-                      inst[prop].value = newVal;
-                    } else {
-                      inst[prop] = newVal;
+                // We store getters in a map to prevent having to recreate them every time
+                if (!Object.keys(_gettersMap).includes(propKey.toString())) {
+                  const onChange = VarEvent();
+                  let oldPropOnChange: VarEvent | undefined = undefined;
+                  const updateGetter = () => {
+                    if (exists(oldPropOnChange)) {
+                      oldPropOnChange.removeListener(onChange.trigger);
+                      oldPropOnChange = undefined;
                     }
-                  },
-                  onChange: onChange,
-                });
+                    const propVal = (funcs.read() as any)[propKey];
+                    if (Var.isVar(propVal)) {
+                      propVal.onChange.addListener(onChange.trigger);
+                      oldPropOnChange = propVal.onChange;
+                    }
+                    onChange.trigger();
+                  };
+                  funcs.onChange.addListener(updateGetter);
+                  updateGetter();
+                  _gettersMap[propKey] = Var.fromFuncs({
+                    read: () => Var.toLit((funcs.read() as any)[propKey]),
+                    write: (newVal) => {
+                      const inst: any = funcs.read();
+                      if (Var.isVar(inst[propKey])) {
+                        inst[propKey].value = newVal;
+                      } else {
+                        inst[propKey] = newVal;
+                      }
+                    },
+                    onChange: onChange,
+                  });
+                }
+                return _gettersMap[propKey];
               }
           }
         },
@@ -153,7 +160,8 @@ const Var = callable({
         // https://stackoverflow.com/a/71560711
         // We can't infer this yet beacuse Prettier doesn't like "ReturnType<typeof Var<P, T>>".
       },
-    ) as Var<P, T>,
+    ) as Var<P, T>;
+  },
 
   /** @About Checks whether or not the given value is a variable of any sort. */
   // We can't check "exists(x?.value)" beacuse sometimes value exists, but returns undefined.
