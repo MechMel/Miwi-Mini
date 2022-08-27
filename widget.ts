@@ -997,7 +997,7 @@ function _defaultPageParams() {
 }
 
 /** @Note Describes a web page. */
-const page = function (
+const openPage = function (
   options = _defaultPageParams() as ReturnType<typeof _defaultPageParams>,
   ...contents: Contents[]
 ) {
