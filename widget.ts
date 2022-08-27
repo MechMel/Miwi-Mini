@@ -39,8 +39,8 @@ type _contentCompiler = {
 };
 type _ContentCompilationResults = {
   htmlElements: Node[];
-  widthGrows: boolean;
-  heightGrows: boolean;
+  widthGrows: Bool<R>;
+  heightGrows: Bool<R>;
   greatestZIndex: number;
 };
 const _contentCompilers: _contentCompiler[] = [];
@@ -160,8 +160,8 @@ function createHtmlElement(params: {
 // SECTION: Widget
 /** @About Widgets are the building blocks of UIs. */
 interface Widget {
-  width: Size;
-  height: Size;
+  width: Size<R>;
+  height: Size<R>;
   cornerRadius: Num<R>;
   outlineColor: Color<R>;
   outlineSize: Num<R>;
@@ -330,44 +330,49 @@ _addNewContentCompiler({
 //
 
 // SECTION: Width & Height
-type Size = number | string | _SizeGrowConfig;
-type _SizeGrowConfig = {
+type Size<P extends R | RW> = Num<P> | Str<P> | _SizeGrowConfig<P>;
+type SizeLit = number | string | _SizeGrowConfigLit;
+type _SizeGrowConfig<P extends R | RW> = VarSubtype<P, _SizeGrowConfigLit>;
+const _SizeGrowConfig = Var.subtype((x): x is _SizeGrowConfigLit =>
+  exists(x.flex),
+);
+type _SizeGrowConfigLit = {
   flex: number;
 };
-const _getSizeGrows = (givenSize: Size, childGrows: boolean) =>
-  _isSizeGrowConfig(givenSize) || (givenSize == size.shrink && childGrows);
+const _getSizeGrows = (givenSize: Size<R>, childGrows: Bool<R>) =>
+  or(
+    _SizeGrowConfig.is(givenSize),
+    and(equ(givenSize, size.shrink), childGrows),
+  );
 function _isSizeGrowConfig(
   possibleGrowth: any,
-): possibleGrowth is _SizeGrowConfig {
+): possibleGrowth is _SizeGrowConfigLit {
   return exists(possibleGrowth.flex);
 }
 const size = readonlyObj({
-  exactly: function (num: number): Size {
-    return num;
-  },
-  shrink: -1 as Size,
-  grow: (function () {
-    const buildGrowth = function (flex: number) {
-      return { flex: flex };
-    };
-    buildGrowth.flex = 1;
-    return buildGrowth;
-  })(),
+  shrink: -1,
+  grow: callable({
+    call: (flex: number) => ({ flex }),
+    flex: 1,
+  }),
 });
 widgetStyleBuilders.push(function (params: {
   widget: Widget;
   parent: Widget;
   childrenInfo: _ContentCompilationResults;
 }) {
-  const computeSizeInfo = (givenSize: Size, childGrows: boolean) => {
+  const computeSizeInfo = (givenSize: Size<R>, childGrows: Bool<R>) => {
     const sizeGrows = _getSizeGrows(givenSize, childGrows);
-    const exactSize =
-      typeof givenSize === `string`
-        ? givenSize
-        : givenSize !== size.shrink && !sizeGrows
-        ? old_numToStandardHtmlUnit(givenSize as number)
-        : ``;
-    return [exactSize, sizeGrows];
+    const exactSize = ifel(
+      Str.is(givenSize),
+      givenSize as Str<R>,
+      ifel(
+        and(not(equ(givenSize, size.shrink)), not(sizeGrows)),
+        numToStandardHtmlUnit(givenSize as Num<R>),
+        ``,
+      ),
+    );
+    return [exactSize, sizeGrows] as const;
   };
   const [exactWidth, widthGrows] = computeSizeInfo(
     params.widget.width,
@@ -388,24 +393,27 @@ widgetStyleBuilders.push(function (params: {
       height: exactHeight,
       minHeight: exactHeight,
       maxHeight: exactHeight,
-      flexGrow:
-        Var.toLit(params.parent.contentAxis) === axis.vertical
-          ? _isSizeGrowConfig(params.widget.height)
-            ? params.widget.height.flex
-            : heightGrows
-            ? 1
-            : ``
-          : _isSizeGrowConfig(params.widget.width)
-          ? params.widget.width.flex
-          : widthGrows
-          ? 1
-          : ``,
-      alignSelf:
-        (Var.toLit(params.parent.contentAxis) === axis.horizontal &&
-          heightGrows) ||
-        (Var.toLit(params.parent.contentAxis) === axis.vertical && widthGrows)
-          ? `stretch`
-          : ``,
+      flexGrow: ifel(
+        equ(params.parent.contentAxis, axis.vertical),
+        ifel(
+          _SizeGrowConfig.is(params.widget.height),
+          (params.widget.height as _SizeGrowConfig<R>).flex,
+          ifel(heightGrows, 1, ``),
+        ),
+        ifel(
+          _SizeGrowConfig.is(params.widget.width),
+          (params.widget.width as _SizeGrowConfig<R>).flex,
+          ifel(widthGrows, 1, ``),
+        ),
+      ),
+      alignSelf: ifel(
+        or(
+          and(equ(params.parent.contentAxis, axis.horizontal), heightGrows),
+          and(equ(params.parent.contentAxis, axis.vertical), widthGrows),
+        ),
+        `stretch`,
+        ``,
+      ),
     },
     preferChild: {
       display: `flex`,
