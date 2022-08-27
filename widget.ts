@@ -330,7 +330,13 @@ _addNewContentCompiler({
 //
 
 // SECTION: Width & Height
-type Size<P extends R | RW> = Num<P> | Str<P> | _SizeGrowConfig<P>;
+type Size<P extends R | RW> = VarSubtype<P, SizeLit>;
+const Size = Var.subtype(
+  (x): x is SizeLit =>
+    Var.toLit(Num.is(x)) ||
+    Var.toLit(Str.is(x)) ||
+    Var.toLit(_SizeGrowConfig.is(x)),
+);
 type SizeLit = number | string | _SizeGrowConfigLit;
 type _SizeGrowConfig<P extends R | RW> = VarSubtype<P, _SizeGrowConfigLit>;
 const _SizeGrowConfig = Var.subtype((x): x is _SizeGrowConfigLit =>
