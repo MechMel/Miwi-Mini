@@ -2,6 +2,8 @@
 type Str<P extends R | RW = RW> = VarSubtype<P, string>;
 const Str = Var.subtype((x: any): x is string => typeof x === `string`);
 
+// Str.space & Str.empty
+
 /** @About Stacks a bunch of chars together. */
 const concat = (...args: VarOrLit<R, string | number | boolean>[]) =>
   computed(

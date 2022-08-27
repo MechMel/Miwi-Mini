@@ -171,7 +171,7 @@ interface Widget {
   onTap: (() => void) | undefined;
   //interaction: { onTap: function() {}, onDoubleTap: function() {}, onLongPress: function() {}, }
   padding: Num<R>;
-  contentAlign: AlignLit;
+  contentAlign: Align<R>;
   contentAxis: Axis<R>;
   contentIsScrollableX: Bool<R>;
   contentIsScrollableY: Bool<R>;
@@ -247,7 +247,7 @@ type _WidgetStylePart = {
   preferParent?: { [key: string]: _WidgetCompilerStyleProp };
   preferChild?: { [key: string]: _WidgetCompilerStyleProp };
 };
-type _BasicWidgetCompilerStyleProp = Str<R> | Num<R> | Bool<R> | undefined;
+type _BasicWidgetCompilerStyleProp = Str<R> | Num<R> | Bool<R>;
 type _WidgetCompilerStyleProp =
   | Var<R, _BasicWidgetCompilerStyleProp>
   | _BasicWidgetCompilerStyleProp;
@@ -366,7 +366,7 @@ widgetStyleBuilders.push(function (params: {
         ? givenSize
         : givenSize !== size.shrink && !sizeGrows
         ? old_numToStandardHtmlUnit(givenSize as number)
-        : undefined;
+        : ``;
     return [exactSize, sizeGrows];
   };
   const [exactWidth, widthGrows] = computeSizeInfo(
@@ -394,18 +394,18 @@ widgetStyleBuilders.push(function (params: {
             ? params.widget.height.flex
             : heightGrows
             ? 1
-            : undefined
+            : ``
           : _isSizeGrowConfig(params.widget.width)
           ? params.widget.width.flex
           : widthGrows
           ? 1
-          : undefined,
+          : ``,
       alignSelf:
         (Var.toLit(params.parent.contentAxis) === axis.horizontal &&
           heightGrows) ||
         (Var.toLit(params.parent.contentAxis) === axis.vertical && widthGrows)
           ? `stretch`
-          : undefined,
+          : ``,
     },
     preferChild: {
       display: `flex`,
@@ -488,18 +488,14 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
       ),
 
       // Background
-      backgroundColor: ifel(
-        backgroundIsColor,
-        params.widget.background,
-        undefined,
-      ),
+      backgroundColor: ifel(backgroundIsColor, params.widget.background, ``),
       backgroundImage: ifel(
         backgroundIsColor,
-        undefined,
+        ``,
         concat(`url(/images/`, params.widget.background, `)`),
       ),
-      backgroundPosition: ifel(backgroundIsColor, undefined, `center`),
-      backgroundSize: ifel(backgroundIsColor, undefined, `cover`),
+      backgroundPosition: ifel(backgroundIsColor, ``, `center`),
+      backgroundSize: ifel(backgroundIsColor, ``, `cover`),
       backgroundRepeat: `no-repeat`,
       backgroundAttachment: `local`,
 
@@ -544,7 +540,9 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
 //
 
 // SECTION: Content Align
-type AlignLit = typeof align[keyof typeof align];
+type Align<P extends R | RW = RW> = VarSubtype<P, AlignLit>;
+const Align = Var.subtype((x): x is AlignLit => exists(x?.x) && exists(x?.y));
+type AlignLit = { x: Num<RW>; y: Num<RW> };
 const align = readonlyObj({
   topLeft: { x: -1, y: 1 },
   topCenter: { x: 0, y: 1 },
@@ -562,81 +560,108 @@ widgetStyleBuilders.push(
     parent: Widget;
     childrenInfo: _ContentCompilationResults;
   }) => {
-    const myPosition =
-      Var.toLit(params.parent.contentAxis) === axis.z ? `absolute` : `relative`;
+    const parentIsZAxis = equ(params.parent.contentAxis, axis.z);
+    const widgetIsZAxis = equ(params.widget.contentAxis, axis.z);
+    const myPosition = ifel(parentIsZAxis, `absolute`, `relative`);
     return {
       preferParent: {
         // Algin self when in a stack
         position: myPosition,
-        margin:
-          Var.toLit(params.parent.contentAxis) === axis.z
-            ? `${params.parent.contentAlign.x === 0 ? `auto` : 0} ${
-                params.parent.contentAlign.y === 0 ? `auto` : 0
-              }`
-            : 0,
-        left:
-          Var.toLit(params.parent.contentAxis) === axis.z &&
-          params.parent.contentAlign.x === -1
-            ? 0
-            : undefined,
-        top:
-          Var.toLit(params.parent.contentAxis) === axis.z &&
-          params.parent.contentAlign.y === 1
-            ? 0
-            : undefined,
-        right:
-          Var.toLit(params.parent.contentAxis) === axis.z &&
-          params.parent.contentAlign.x === 1
-            ? 0
-            : undefined,
-        bottom:
-          Var.toLit(params.parent.contentAxis) === axis.z &&
-          params.parent.contentAlign.y === -1
-            ? 0
-            : undefined,
+        margin: ifel(
+          parentIsZAxis,
+          concat(
+            ifel(equ(params.parent.contentAlign.x, 0), `auto`, 0),
+            ` `,
+            ifel(equ(params.parent.contentAlign.y, 0), `auto`, 0),
+          ),
+          0,
+        ),
+        left: ifel(
+          and(parentIsZAxis, equ(params.parent.contentAlign.x, -1)),
+          0,
+          ``,
+        ),
+        top: ifel(
+          and(parentIsZAxis, equ(params.parent.contentAlign.y, 1)),
+          0,
+          ``,
+        ),
+        right: ifel(
+          and(parentIsZAxis, equ(params.parent.contentAlign.x, 1)),
+          0,
+          ``,
+        ),
+        bottom: ifel(
+          and(parentIsZAxis, equ(params.parent.contentAlign.y, -1)),
+          0,
+          ``,
+        ),
 
         // Content Alignment: https://css-tricks.com/snippets/css/a-guide-to-flexbox/
         justifyContent:
           // Exact spacing is handled through grid gap
-          typeof params.widget.contentSpacing === `number`
-            ? params.widget.contentAxis === axis.vertical
-              ? params.widget.contentAlign.y === 1
-                ? `flex-start`
-                : params.widget.contentAlign.y === 0
-                ? `safe center`
-                : `flex-end`
-              : params.widget.contentAlign.x === -1
-              ? `flex-start`
-              : params.widget.contentAlign.x === 0
-              ? `safe center`
-              : `flex-end`
-            : params.widget.contentSpacing === spacing.spaceBetween &&
-              params.childrenInfo.htmlElements.length === 1
-            ? // For whatever reason, space-between with one item puts it at the start instead of centering it.
-              spacing.spaceAround
-            : params.widget.contentSpacing,
-        alignItems:
-          params.widget.contentAxis === axis.vertical
-            ? params.widget.contentAlign.x === -1
-              ? `flex-start`
-              : params.widget.contentAlign.x === 0
-              ? `safe center`
-              : `flex-end`
-            : params.widget.contentAlign.y === 1
-            ? `flex-start`
-            : params.widget.contentAlign.y === 0
-            ? `safe center`
-            : `flex-end`,
-        textAlign:
-          params.widget.contentAlign.x === -1
-            ? `left`
-            : params.widget.contentAlign.x === 0
-            ? `center`
-            : `right`,
+          ifel(
+            Num.is(params.widget.contentSpacing),
+            ifel(
+              equ(params.widget.contentAxis, axis.vertical),
+              ifel(
+                equ(params.widget.contentAlign.y, 1),
+                `flex-start`,
+                ifel(
+                  equ(params.widget.contentAlign.y, 0),
+                  `safe center`,
+                  `flex-end`,
+                ),
+              ),
+              ifel(
+                equ(params.widget.contentAlign.x, -1),
+                `flex-start`,
+                ifel(
+                  equ(params.widget.contentAlign.x, 0),
+                  `safe center`,
+                  `flex-end`,
+                ),
+              ),
+            ),
+            // For whatever reason, space-between with one item puts it at the start instead of centering it.
+            ifel(
+              and(
+                equ(params.widget.contentSpacing, spacing.spaceBetween),
+                equ(params.childrenInfo.htmlElements.length, 1),
+              ),
+              spacing.spaceAround,
+              params.widget.contentSpacing,
+            ),
+          ),
+        alignItems: ifel(
+          equ(params.widget.contentAxis, axis.vertical),
+          ifel(
+            equ(params.widget.contentAlign.x, -1),
+            `flex-start`,
+            ifel(
+              equ(params.widget.contentAlign.x, 0),
+              `safe center`,
+              `flex-end`,
+            ),
+          ),
+          ifel(
+            equ(params.widget.contentAlign.y, 1),
+            `flex-start`,
+            ifel(
+              equ(params.widget.contentAlign.y, 0),
+              `safe center`,
+              `flex-end`,
+            ),
+          ),
+        ),
+        textAlign: ifel(
+          equ(params.widget.contentAlign.x, -1),
+          `left`,
+          ifel(equ(params.widget.contentAlign.x, 0), `center`, `right`),
+        ),
       },
       preferChild: {
-        position:
-          params.widget.contentAxis === axis.z ? `relative` : myPosition,
+        position: ifel(widgetIsZAxis, `relative`, myPosition),
       },
     };
   },
@@ -685,12 +710,12 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
       overflowX: ifel(
         params.widget.contentIsScrollableX,
         `overlay`, // Scroll when nesscary, and float above contents
-        undefined, //`hidden`,
+        ``, //`hidden`,
       ),
       overflowY: ifel(
         params.widget.contentIsScrollableY,
         `auto`, // Scroll when nesscary, and float above contents
-        undefined, //`hidden`,
+        ``, //`hidden`,
       ),
       scrollbarWidth: `thin`,
       scrollbarColor: `#e3e3e3 transparent`,
@@ -723,12 +748,12 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
         params.widget.contentAxis === axis.vertical &&
         typeof params.widget.contentSpacing === `number`
           ? old_numToStandardHtmlUnit(params.widget.contentSpacing)
-          : undefined,
+          : ``,
       columnGap:
         params.widget.contentAxis === axis.horizontal &&
         typeof params.widget.contentSpacing === `number`
           ? old_numToStandardHtmlUnit(params.widget.contentSpacing)
-          : undefined,
+          : ``,
     },
   };
 });
@@ -750,8 +775,8 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
     preferChild: {
       fontFamily: `Roboto`,
       fontSize: numToFontSize(params.widget.textSize),
-      fontWeight: params.widget.textIsBold ? `bold` : undefined,
-      fontStyle: params.widget.textIsItalic ? `italic` : undefined,
+      fontWeight: params.widget.textIsBold ? `bold` : ``,
+      fontStyle: params.widget.textIsItalic ? `italic` : ``,
       color: params.widget.textColor,
     },
   };

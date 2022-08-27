@@ -116,6 +116,7 @@ const Var = callable({
                   if (exists(oldPropOnChange))
                     oldPropOnChange.removeListener(onChange.trigger);
                   const inst: any = funcs.read();
+                  console.log(`changed: ${inst[prop]}`);
                   if (Var.isVar(inst[prop])) {
                     inst[prop].onChange.addListener(onChange.trigger);
                     oldPropOnChange = inst[prop].onChange;
