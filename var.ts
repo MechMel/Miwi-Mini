@@ -121,7 +121,7 @@ const Var = callable({
                     inst[prop].onChange.addListener(onChange.trigger);
                     oldPropOnChange = inst[prop].onChange;
                   }
-                  onChange.trigger;
+                  onChange.trigger();
                 });
                 return Var.fromFuncs({
                   read: () => Var.toLit((funcs.read() as any)[prop]),
