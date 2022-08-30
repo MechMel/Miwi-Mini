@@ -3,13 +3,15 @@ function _isIcon(possibleIcon: any): possibleIcon is IconLit {
   return exists(possibleIcon?.icon);
 }
 
-function _buildIconsObj<T1 extends T2[] | [], T2 extends string>(
+function _buildIconsObj<T1 extends readonly T2[] | [], T2 extends string>(
   unformattedIcons: T1,
 ): { readonly [Key in T1[number]]: IconLit } {
   const formattedIcons: any = {};
   for (const i in unformattedIcons) {
     formattedIcons[unformattedIcons[i]] = {
-      icon: unformattedIcons[i],
+      icon: unformattedIcons[i].startsWith(_numIconTag)
+        ? unformattedIcons[i].substring(_numIconTag.length)
+        : unformattedIcons[i],
       toString: function () {
         return `$$#@%${JSON.stringify({
           icon: unformattedIcons[i],
@@ -630,7 +632,7 @@ const _iconsObj = _buildIconsObj([
   "alternate_email",
   "app_registration",
   "business",
-  "call",
+  "i_call",
   "call_end",
   "call_made",
   "call_merge",
@@ -2230,4 +2232,4 @@ const _iconsObj = _buildIconsObj([
   "star_purple500",
   "toggle_off",
   "toggle_on",
-]);
+] as const);

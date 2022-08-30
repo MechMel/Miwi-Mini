@@ -15,3 +15,5 @@ const callable = function <C extends { call: Function }>(
   }
   return func;
 };
+
+type OneOrMore<P extends VarPerms, T> = T | VarSubtype<P, T[]>;

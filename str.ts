@@ -1,6 +1,9 @@
 /** @About A reactive, characters variable. */
-type Str<P extends R | RW = RW> = VarSubtype<P, string>;
-const Str = Var.subtype((x: any): x is string => typeof x === `string`);
+type Str<P extends VarPerms = R> = VarSubtype<P, typeof Str>;
+const Str = Var.subtype({
+  isThisType: (x) => typeof x === `string`,
+  defaultInsts: [``],
+});
 
 // Str.space & Str.empty
 

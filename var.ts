@@ -31,15 +31,17 @@ type R = { r: true };
 type W = { w: true };
 /** @About Provides both read and write access to a Var. */
 type RW = R & W;
+/** @About A union of all the legal Var permissions. */
+type VarPerms = R | RW;
 
 // TypeScript doesn't yet suport write only
-type VarFromFuncsParams<P extends R | RW, T> = {
+type VarFromFuncsParams<P extends VarPerms, T> = {
   read(): T;
   readonly onChange: VarEvent;
 } & (P extends W ? { write(newVal: T): void } : {});
 
 /** @About Represents a simple variable. */
-type Var<P extends R | RW, T> = {
+type Var<P extends VarPerms, T> = {
   [Key in  // We get rid of string's props because TypeScript `#${string}` counts as a string object not a string literal
     | (keyof (T extends string
         ? {}
@@ -69,7 +71,7 @@ type Var<P extends R | RW, T> = {
 };
 const Var = callable({
   /** @About Creates a Var from an inital value. */
-  call: <P extends R | RW, T>(val: T) =>
+  call: <P extends VarPerms, T>(val: T) =>
     Var.fromFuncs<P, T>({
       read: () => val,
       onChange: VarEvent(),
@@ -83,7 +85,7 @@ const Var = callable({
     } as any),
 
   /** @About Creates a Var from read and write functions. */
-  fromFuncs: <P extends R | RW, T>(
+  fromFuncs: <P extends VarPerms, T>(
     funcs: VarFromFuncsParams<P, T>,
   ): Var<P, T> => {
     const _gettersMap: { [key: string | symbol | number]: Var<RW, any> } = {};
@@ -152,7 +154,7 @@ const Var = callable({
               (funcs as any).write?.(newVal);
               break;
             default:
-              throw `Props of Var<R | RW, Obj> should not be set.`;
+              throw `Props of Var<VarPerms, Obj> should not be set.`;
           }
           return true;
         },
@@ -165,45 +167,70 @@ const Var = callable({
 
   /** @About Checks whether or not the given value is a variable of any sort. */
   // We can't check "exists(x?.value)" beacuse sometimes value exists, but returns undefined.
-  isVar: <P extends R | RW, T>(x: Var<P, T> | T): x is Var<P, T> =>
+  isVar: <P extends VarPerms, T>(x: Var<P, T> | T): x is Var<P, T> =>
     exists((x as any)?.onChange),
 
   toLit: <T>(x: VarOrLit<R, T>): T => (Var.isVar(x) ? x.value : x) as any,
 
-  /** @About Creates a var for a specific, literal type. The standard format is:
-   *
-   * type Num<P extends R | RW = RW> = VarSubtype<P, number>;
-   * const Num = Var.subtype((x: any): x is number => typeof x === `number`);
+  /** @About Creates a var for a specific, literal type.
+   * @example
+   * type Num<P extends VarPerms = RW> = VarSubtype<P, typeof Num>;
+   * const Num = Var.subtype({
+   *   isThisType: (x) => typeof x === `number`,
+   *   defaultInts: [0],
+   * });
    */
-  subtype: <T = any>(isThisType: (v: any) => v is T) =>
+  subtype: <T = any, StaticProps extends { [key: string]: any } = {}>(params: {
+    readonly isThisType: (v: any) => boolean;
+    readonly staticProps?: StaticProps;
+    readonly defaultInsts: readonly T[];
+  }) =>
     callable({
       /** @About Creates a Var from an inital value. */
-      call: <P extends R | RW = RW>(val: T) => Var<P, T>(val),
+      call: <P extends VarPerms = RW>(val: T = params.defaultInsts[0]) =>
+        Var<P, T>(val),
 
       /** @About Creates a Var from read and write functions. */
-      fromFuncs: <P extends R | RW>(funcs: VarFromFuncsParams<P, T>) =>
+      fromFuncs: <P extends VarPerms>(funcs: VarFromFuncsParams<P, T>) =>
         Var.fromFuncs<P, T>(funcs),
 
       /** @About Checks whether or not the given value is a variable of this type and returns a
        * reactive boolean. */
-      is: (x: any) => computed(() => isThisType(Var.toLit(x)), [x]),
+      is: (x: any) => computed(() => params.isThisType(Var.toLit(x)), [x]),
+
+      defaultInsts: params.defaultInsts,
+
+      ...params.defaultInsts[0],
+
+      ...((exists(params.staticProps)
+        ? params.staticProps
+        : {}) as StaticProps),
 
       // TODO: Allow subtypes of subtypes of var. For example, Color could be a subtype of Chars.
     }),
 });
 
 /** @About Accepts either a Var or its literal type. e.g. "Bool<R> | boolean" */
-type VarOrLit<P extends R | RW, T> = T | Var<P, T>;
+type VarOrLit<P extends VarPerms, T> = T | Var<P, T>;
 
 /** @About Retrieves the read/write permissions of any type. */
 // We assume that literals should be treated as read-only, because they are used when a value doesn't change.
 type GetVarPerms<V> = V extends Var<RW, any> ? RW : R;
 
 /** @About This is how we usually handle subtypes of Var.
- *
- * type Num<P extends R | RW = RW> = VarSubtype<P, number>;
+ * @example
+ * type Num<P extends VarPerms = RW> = VarSubtype<P, typeof Num>;
+ * const Num = Var.subtype({
+ *   isThisType: (x) => typeof x === `number`,
+ *   defaultInts: [0],
+ * });
  */
-type VarSubtype<P extends R | RW, T> = VarOrLit<P, T>;
+type VarSubtype<P extends VarPerms, T> = VarOrLit<
+  P,
+  `defaultInsts` extends keyof T
+    ? T[`defaultInsts`][keyof T[`defaultInsts`] & number]
+    : T
+>;
 
 /** @About Checks whether or not the two given Vars are equal. */
 const equ = (x: VarOrLit<R, any>, y: VarOrLit<R, any>) =>
