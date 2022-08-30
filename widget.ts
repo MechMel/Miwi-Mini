@@ -824,16 +824,16 @@ const _inlineContentCloseTag = `%@#$$`;
 _addNewContentCompiler({
   isThisType: (x) => Var.toLit(Icon.is(x)),
   compile: function (params: {
-    contents: Icon;
+    contents: IconLit;
     parent: Widget<R>;
     startZIndex: number;
   }): _ContentCompilationResults {
-    const textNode = document.createTextNode(
+    /*const textNode = document.createTextNode(
       params.contents.icon.startsWith(_numIconTag)
         ? params.contents.icon.substring(_numIconTag.length)
         : params.contents.icon,
-    );
-    setLWhenRChanges((x) => undefined, params.contents)
+    );*/
+    setLWhenRChanges((x) => undefined, params.contents);
     const htmlElement = createHtmlElement({
       tag: `span`,
       class: `material-symbols-outlined`,
