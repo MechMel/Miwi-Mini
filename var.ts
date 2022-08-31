@@ -244,7 +244,7 @@ type Type<
 
 /** @About Retrieves the read/write permissions of any type. */
 // We assume that literals should be treated as read-only, because they are used when a value doesn't change.
-type GetVarPerms<V> = V extends Var<RW, any> ? RW : R;
+type GetVarPerms<V extends VarOrLit<R, any>> = V extends Var<RW, any> ? RW : R;
 
 /** @About Checks whether or not the two given Vars are equal. */
 const equ = (x: VarOrLit<R, any>, y: VarOrLit<R, any>) =>

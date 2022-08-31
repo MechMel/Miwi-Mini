@@ -8,7 +8,7 @@
 type Contents = OneOrMore<R, Str | Bool | Num | Icon | Widget>;
 const isContent = function (possibleContent: any): possibleContent is Contents {
   let isActuallyContent = false;
-  if (Array.isArray(possibleContent)) {
+  if (Var.toLit(List.is(possibleContent))) {
     isActuallyContent = true;
     for (const i in possibleContent) {
       isActuallyContent = isActuallyContent && isContent(possibleContent[i]);
@@ -62,7 +62,7 @@ const compileContentsToHtml = function (params: {
   )}`;
 };
 _addNewContentCompiler({
-  isThisType: (contents: Contents) => Array.isArray(contents),
+  isThisType: (contents: Contents) => Var.toLit(List.is(contents)),
   compile: function (params: {
     contents: (Str<R> | Bool<R> | Num<R> | Required<IconLit> | Widget<R>)[];
     parent: Widget<R>;
@@ -134,12 +134,12 @@ function createHtmlElement(params: {
 
   // Add children
   if (exists(params.content)) {
-    if (Array.isArray(params.content)) {
-      for (const child of params.content) {
+    if (Var.toLit(List.is(params.content))) {
+      for (const child of params.content as Node[]) {
         htmlElement.appendChild(child);
       }
     } else {
-      htmlElement.appendChild(params.content);
+      htmlElement.appendChild(params.content as Node);
     }
   }
 
@@ -222,7 +222,7 @@ _addNewContentCompiler({
       greatestZIndex: childrenInfo.greatestZIndex,
       htmlElements: [
         createHtmlElement({
-          tag: Var.toLit(params.contents.htmlTag),
+          tag: Var.toLit(Var.toLit(params.contents).htmlTag),
           onClick: params.contents.onTap,
           style: parentStyle,
           content: shouldCreateChild
