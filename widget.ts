@@ -18,7 +18,7 @@ const isContent = function (possibleContent: any): possibleContent is Contents {
       Var.toLit(Str.is(possibleContent)) ||
       Var.toLit(Bool.is(possibleContent)) ||
       Var.toLit(Num.is(possibleContent)) ||
-      _isIcon(possibleContent) ||
+      Var.toLit(Icon.is(possibleContent)) ||
       Var.toLit(Widget.is(possibleContent));
   }
   return isActuallyContent;
@@ -54,6 +54,7 @@ const compileContentsToHtml = function (params: {
       });
     }
   }
+  console.log(params.contents?.value);
   throw `Encountered an error in "miwi/widget.ts.compileContentsToHtml". Could not find a content compiler for ${JSON.stringify(
     params.contents,
     null,
@@ -144,6 +145,8 @@ function createHtmlElement(params: {
 
   return htmlElement;
 }
+const _inlineContentOpenTag = `<MiwiElement>`;
+const _inlineContentCloseTag = `</MiwiElement>`;
 
 //
 //
@@ -171,7 +174,9 @@ type _WidgetCompilerStyleProp =
 
 /** @About Converts a widget to an html element along with some other stats. */
 _addNewContentCompiler({
-  isThisType: (contents: Contents) => exists((contents as any)?.htmlTag),
+  isThisType: (x) => {
+    return Var.toLit(Widget.is(x));
+  },
   compile: function (params: {
     contents: Widget<R>;
     parent: Widget<R>;
@@ -247,23 +252,22 @@ _addNewContentCompiler({
 //
 
 // SECTION: Width & Height
-type FlexSize<P extends VarPerms = RW> = VarSubtype<P, typeof FlexSize>;
-const FlexSize = Var.subtype({
-  isThisType: (x) => exists(x.flex),
-  defaultInsts: [{ flex: 1 as Num<RW> }],
+type FlexSize<P extends VarPerms = RW> = Type<P, typeof FlexSize>;
+const FlexSize = Var.newType({
+  is: (x) => exists(x.flex),
+  construct: (x: { flex: Num<RW> }) => x,
+  flex: 1,
 });
-type Size<P extends VarPerms = RW> = VarSubtype<P, typeof Size>;
-const Size = Var.subtype({
-  isThisType: (x) =>
+type Size<P extends VarPerms = RW> = Type<P, typeof Size>;
+const Size = Var.newType({
+  is: (x) =>
     Var.toLit(Num.is(x)) || Var.toLit(Str.is(x)) || Var.toLit(FlexSize.is(x)),
-  defaultInsts: [0, ``, ...FlexSize.defaultInsts],
-  staticProps: {
-    shrink: -1,
-    grow: callable({
-      call: (flex: number) => ({ flex }),
-      flex: 1,
-    }),
-  },
+  construct: (x: number | string | Lit<FlexSize>) => x,
+  shrink: -1,
+  grow: callable({
+    call: (flex: number = 1) => ({ flex }),
+    flex: 1,
+  }),
 });
 const _getSizeGrows = (givenSize: Size<R>, childGrows: Bool<R>) =>
   or(FlexSize.is(givenSize), and(equ(givenSize, Size.shrink), childGrows));
@@ -346,31 +350,29 @@ const numToStandardHtmlUnit = (num: Num<R>) =>
 
 // SECTION: Box Decoration
 // type HSV = `${number} ${number} ${number}`;
-type Color<P extends VarPerms = R> = VarSubtype<P, typeof Color>;
-const Color = Var.subtype({
-  isThisType: (v) => typeof v === `string` && v.startsWith(`#`),
-  defaultInsts: [`#ffffffff` as `#${string}`],
-  staticProps: {
-    white: `#ffffffff`,
-    almostWhite: `#f9fafdff`,
-    pink: `#e91e63ff`,
-    red: `#f44336ff`,
-    orange: `#ff9800ff`,
-    yellow: `#ffea00ff`,
-    green: `#4caf50ff`,
-    teal: `#009688ff`,
-    blue: `#2196f3ff`,
-    purple: `#9c27b0ff`,
-    brown: `#795548ff`,
-    grey: `#9e9e9eff`,
-    black: `#000000ff`,
-    transparent: `#ffffff00`,
-  } as const,
-});
+type Color<P extends VarPerms = R> = Type<P, typeof Color>;
+const Color = Var.newType({
+  is: (v) => typeof v === `string` && v.startsWith(`#`),
+  construct: (v: `#${string}`) => v,
+  white: `#ffffffff`,
+  almostWhite: `#f9fafdff`,
+  pink: `#e91e63ff`,
+  red: `#f44336ff`,
+  orange: `#ff9800ff`,
+  yellow: `#ffea00ff`,
+  green: `#4caf50ff`,
+  teal: `#009688ff`,
+  blue: `#2196f3ff`,
+  purple: `#9c27b0ff`,
+  brown: `#795548ff`,
+  grey: `#9e9e9eff`,
+  black: `#000000ff`,
+  transparent: `#ffffff00`,
+} as const);
 const _imageExtensions = [`.ico`, `.svg`, `.png`, `.jpg`, `.jpeg`] as const;
-type ImageRef<P extends VarPerms> = VarSubtype<P, typeof ImageRef>;
-const ImageRef = Var.subtype({
-  isThisType: function (v) {
+type ImageRef<P extends VarPerms = R> = Type<P, typeof ImageRef>;
+const ImageRef = Var.newType({
+  is: function (v) {
     if (typeof v === `string`) {
       for (const ext of _imageExtensions) {
         if (v.endsWith(ext)) return true;
@@ -378,13 +380,14 @@ const ImageRef = Var.subtype({
     }
     return false;
   },
-  defaultInsts: [`icon.png` as `${string}${typeof _imageExtensions[number]}`],
+  construct: (v: `${string}${typeof _imageExtensions[number]}`) => v,
+  toString: () => `icon.png`,
 });
 /** @Note Describes the styling of the background of a widget. */
-type Material<P extends VarPerms> = VarSubtype<P, typeof Material>;
-const Material = Var.subtype({
-  isThisType: (v) => Var.toLit(Color.is(v)) || Var.toLit(ImageRef.is(v)),
-  defaultInsts: [...Color.defaultInsts, ...ImageRef.defaultInsts],
+type Material<P extends VarPerms = R> = Type<P, typeof Material>;
+const Material = Var.newType({
+  is: (v) => Var.toLit(Color.is(v)) || Var.toLit(ImageRef.is(v)),
+  construct: (v: Lit<Color> | Lit<ImageRef>) => v,
 });
 widgetStyleBuilders.push((params: { widget: Widget<R> }) => {
   const backgroundIsColor = Color.is(params.widget.background);
@@ -459,21 +462,19 @@ widgetStyleBuilders.push((params: { widget: Widget<R> }) => {
 //
 
 // SECTION: Content Align
-type Align<P extends VarPerms = RW> = VarSubtype<P, typeof Align>;
-const Align = Var.subtype({
-  isThisType: (x) => exists(x?.x) && exists(x?.y),
-  defaultInsts: [{ x: 0 as Num<RW>, y: 0 as Num<RW> }],
-  staticProps: {
-    topLeft: { x: -1, y: 1 },
-    topCenter: { x: 0, y: 1 },
-    topRight: { x: 1, y: 1 },
-    centerLeft: { x: -1, y: 0 },
-    center: { x: 0, y: 0 },
-    centerRight: { x: 1, y: 0 },
-    bottomLeft: { x: -1, y: -1 },
-    bottomCenter: { x: 0, y: -1 },
-    bottomRight: { x: 1, y: -1 },
-  },
+type Align<P extends VarPerms = RW> = Type<P, typeof Align>;
+const Align = Var.newType({
+  is: (x) => exists(x?.x) && exists(x?.y),
+  construct: (v: { x: Num<RW>; y: Num<RW> }) => v,
+  topLeft: { x: -1, y: 1 },
+  topCenter: { x: 0, y: 1 },
+  topRight: { x: 1, y: 1 },
+  centerLeft: { x: -1, y: 0 },
+  center: { x: 0, y: 0 },
+  centerRight: { x: 1, y: 0 },
+  bottomLeft: { x: -1, y: -1 },
+  bottomCenter: { x: 0, y: -1 },
+  bottomRight: { x: 1, y: -1 },
 });
 widgetStyleBuilders.push(
   (params: {
@@ -599,14 +600,13 @@ const _axisOptions = readonlyObj({
   horizontal: `horizontal`,
   vertical: `vertical`,
   z: `z`,
-});
-type Axis<P extends VarPerms> = VarSubtype<P, typeof Axis>;
-const Axis = Var.subtype({
-  isThisType: (x) => Object.values(_axisOptions).includes(x),
-  defaultInsts: [
-    _axisOptions.vertical as typeof _axisOptions[keyof typeof _axisOptions],
-  ],
-  staticProps: _axisOptions,
+} as const);
+type Axis<P extends VarPerms = R> = Type<P, typeof Axis>;
+const Axis = Var.newType({
+  is: (x) => Object.values(_axisOptions).includes(x),
+  construct: (v: Values<typeof _axisOptions>) => v,
+  toString: () => `vertical`,
+  ..._axisOptions,
 });
 widgetStyleBuilders.push(
   (params: { widget: Widget<R>; startZIndex: number }) => {
@@ -661,12 +661,12 @@ const _spacingOptions = readonlyObj({
   spaceAround: `space-around`,
   spaceEvenly: `space-evenly`,
 });
-type Spacing<P extends VarPerms> = VarSubtype<P, typeof Spacing>;
-const Spacing = Var.subtype({
-  isThisType: (x) =>
+type Spacing<P extends VarPerms = R> = Type<P, typeof Spacing>;
+const Spacing = Var.newType({
+  is: (x) =>
     typeof x === `number` || Object.values(_spacingOptions).includes(x),
-  defaultInsts: [0 as number, ...Object.values(_spacingOptions)],
-  staticProps: _spacingOptions,
+  construct: (v: number | Values<typeof _spacingOptions>) => v,
+  ..._spacingOptions,
 });
 widgetStyleBuilders.push((params: { widget: Widget<R> }) => {
   return {
@@ -719,52 +719,93 @@ const numToFontSize = (num: Num<R>) => numToStandardHtmlUnit(mul(0.825, num));
 
 // SECTION: Widget
 /** @About Widgets are the building blocks of UIs. */
-type Widget<P extends VarPerms = R> = VarSubtype<P, typeof Widget>;
-const Widget = Var.subtype({
-  isThisType: (x) => exists(x?.htmlTag),
-  defaultInsts: [
-    {
-      width: Size.shrink as Size<R>,
-      height: Size.shrink as Size<R>,
-      cornerRadius: 0 as Num<R>,
-      outlineColor: Color.transparent as Color<R>,
-      outlineSize: 0.15 as Num<R>,
-      background: Color.transparent as Material<R>,
-      shadowSize: 0 as Num<R>,
-      shadowDirection: Align.bottomRight as Align<R>,
-      onTap: undefined as (() => void) | undefined,
-      //interaction: { onTap: function() {}, onDoubleTap: function() {}, onLongPress: function() {}, }
-      padding: 0 as Num<R>,
-      contentAlign: Align.center as Align<R>,
-      contentAxis: Axis.vertical as Axis<R>,
-      contentIsScrollableX: false as Bool<R>,
-      contentIsScrollableY: false as Bool<R>,
-      contentSpacing: 0 as Spacing<R>,
-      // contentStyle: style.deferToParent,
-      textSize: 1 as Num<R>,
-      textIsBold: false as Bool<R>,
-      textIsItalic: false as Bool<R>,
-      textColor: Color.black as Color<R>,
-      contents: [] as OneOrMore<
-        R,
-        | Str<R>
-        | Bool<R>
-        | Num<R>
-        | Required<IconLit>
-        | { htmlTag: string; [key: string]: any }
-        | Var<R, { htmlTag: string; [key: string]: any }>
-      >,
-      htmlTag: `div` as string,
-      toString: function (): string {
-        // Maybe swap to <MiwiWidget>{...json}</MiwiWidget>
-        return `$$#@%${JSON.stringify(this)}%@#$$`;
-      },
-    },
-  ],
+type WidgetLit = {
+  width: Size;
+  height: Size;
+  cornerRadius: Num;
+  outlineColor: Color;
+  outlineSize: Num;
+  background: Material;
+  shadowSize: Num;
+  shadowDirection: Align;
+  onTap: (() => void) | undefined;
+  //interaction: { onTap: function() {}, onDoubleTap: function() {}, onLongPress: function() {}, }
+  padding: Num;
+  contentAlign: Align;
+  contentAxis: Axis;
+  contentIsScrollableX: Bool;
+  contentIsScrollableY: Bool;
+  contentSpacing: Spacing;
+  // contentStyle: style.deferToParent,
+  textSize: Num;
+  textIsBold: Bool;
+  textIsItalic: Bool;
+  textColor: Color;
+  contents: Contents;
+  readonly htmlTag: string;
+  readonly toString: () => string;
+};
+const _defaultWidget: WidgetLit = {
+  width: Size.shrink,
+  height: Size.shrink,
+  onTap: undefined,
+  cornerRadius: 0,
+  outlineColor: Color.transparent,
+  outlineSize: 0,
+  background: Color.transparent,
+  shadowSize: 0,
+  shadowDirection: Align.center,
+  padding: 0,
+  contentAlign: Align.center,
+  contentAxis: Axis.vertical,
+  contentIsScrollableX: false,
+  contentIsScrollableY: false,
+  contentSpacing: 0,
+  textSize: 1,
+  textIsBold: false,
+  textIsItalic: false,
+  textColor: Color.black,
+  contents: [],
+  htmlTag: `div`,
+};
+type Widget<P extends VarPerms = R> = VarOrLit<P, WidgetLit>;
+const Widget = Var.newType({
+  is: (x) => exists(x?.htmlTag),
+  construct: (
+    options?: _WidgetConstructorOptions,
+    ...contents: Contents[]
+  ): WidgetLit => {
+    if (isContent(options)) {
+      contents.unshift(options);
+      options = {};
+    }
+    const newWidget: any = {};
+    for (const key in _defaultWidget) {
+      newWidget[key] = (options as any)?.[key] ?? (_defaultWidget as any)[key];
+    }
+    // If no invocation contents are provided then we should use the default contents instead.
+    if (contents.length > 0) {
+      newWidget.contents = contents;
+    }
+    newWidget.toString = function (): string {
+      // Maybe swap to <MiwiWidget>{...json}</MiwiWidget>
+      return `${_inlineContentOpenTag}${JSON.stringify(
+        newWidget,
+      )}${_inlineContentCloseTag}`;
+    };
+    return newWidget;
+  },
+  template: (options?: _WidgetConstructorOptions, ...contents: Contents[]) =>
+    callable({
+      call: (options?: _WidgetConstructorOptions, ...contents: Contents[]) =>
+        Widget(options, contents),
+      ...Widget(options, contents).value,
+    }),
+  ..._defaultWidget,
 });
 
-type _WidgetTemplate = Widget<R> & {
-  (options?: _WidgetConstructorOptions, ...contents: Contents[]): Widget<R>;
+type _WidgetTemplate = WidgetLit & {
+  (options?: _WidgetConstructorOptions, ...contents: Contents[]): WidgetLit;
 };
 type _WidgetConstructorOptions =
   | Partial<OmitToNever<Widget<R>, `htmlTag` | `contents`>>
@@ -796,7 +837,9 @@ function widgetTemplate<T extends Required<Omit<Widget<R>, `toString`>>>(
     }
     newWidget.toString = function (): string {
       // Maybe swap to <MiwiWidget>{...json}</MiwiWidget>
-      return `$$#@%${JSON.stringify(newWidget)}%@#$$`;
+      return `${_inlineContentOpenTag}${JSON.stringify(
+        newWidget,
+      )}${_inlineContentCloseTag}`;
     };
     return newWidget;
   };
@@ -813,49 +856,41 @@ function widgetTemplate<T extends Required<Omit<Widget<R>, `toString`>>>(
 //
 
 // SECTION: Icons
-type Icon<P extends VarPerms = R> = VarSubtype<P, IconLit>;
-const Icon = Var.subtype({
-  isThisType: (x) => exists((x as any)?.icon),
-  defaultInsts: Object.values(_iconsObj),
-  staticProps: _iconsObj,
+type Icon<P extends VarPerms = R> = Type<P, typeof Icon>;
+const Icon = Var.newType({
+  is: (x) => exists((x as any)?.icon),
+  construct: (v: { icon: string; toString: () => string }) => v,
+  ..._iconsObj,
 });
-const _inlineContentOpenTag = `$$#@%`;
-const _inlineContentCloseTag = `%@#$$`;
 _addNewContentCompiler({
   isThisType: (x) => Var.toLit(Icon.is(x)),
   compile: function (params: {
-    contents: IconLit;
+    contents: Icon;
     parent: Widget<R>;
     startZIndex: number;
   }): _ContentCompilationResults {
-    /*const textNode = document.createTextNode(
-      params.contents.icon.startsWith(_numIconTag)
-        ? params.contents.icon.substring(_numIconTag.length)
-        : params.contents.icon,
-    );*/
-    setLWhenRChanges((x) => undefined, params.contents);
-    const htmlElement = createHtmlElement({
-      tag: `span`,
-      class: `material-symbols-outlined`,
-      style: {
-        width: numToIconSize(params.parent.textSize),
-        height: numToIconSize(params.parent.textSize),
-        color: params.parent.textColor,
-        display: `inline-block`,
-        verticalAlign: `middle`,
-        textAlign: `center`,
-        fontSize: numToIconSize(params.parent.textSize),
-      },
-      content: [
-        document.createTextNode(
-          params.contents.icon.startsWith(_numIconTag)
-            ? params.contents.icon.substring(_numIconTag.length)
-            : params.contents.icon,
-        ),
-      ],
-    });
+    const textNode = document.createTextNode(``);
+    setLWhenRChanges(
+      (x) => (textNode.nodeValue = x.toString()),
+      params.contents.icon,
+    );
     return {
-      htmlElements: [htmlElement],
+      htmlElements: [
+        createHtmlElement({
+          tag: `span`,
+          class: `material-symbols-outlined`,
+          style: {
+            width: numToIconSize(params.parent.textSize),
+            height: numToIconSize(params.parent.textSize),
+            color: params.parent.textColor,
+            display: `inline-block`,
+            verticalAlign: `middle`,
+            textAlign: `center`,
+            fontSize: numToIconSize(params.parent.textSize),
+          },
+          content: textNode,
+        }),
+      ],
       widthGrows: false,
       heightGrows: false,
       greatestZIndex: params.startZIndex,
@@ -863,7 +898,7 @@ _addNewContentCompiler({
   },
 });
 
-/** @ About converts from standard Moa units to a size that makes sense for icons. */
+/** @About converts from standard Moa units to a size that makes sense for icons. */
 const numToIconSize = (num: Num<R>) => numToStandardHtmlUnit(mul(0.9, num));
 
 //

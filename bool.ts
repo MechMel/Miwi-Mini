@@ -1,8 +1,8 @@
 /** @About A reactive, boolean variable. */
-type Bool<P extends VarPerms = R> = VarSubtype<P, typeof Bool>;
-const Bool = Var.subtype({
-  isThisType: (x) => typeof x === `boolean`,
-  defaultInsts: [false],
+type Bool<P extends VarPerms = R> = VarSubtype<P, boolean>;
+const Bool = Var.newType({
+  is: (x) => typeof x === `boolean`,
+  construct: (v: boolean = false) => v,
 });
 
 /** @About A boolean "and" operator that automatically determines whether to be reactive or not. */

@@ -1,7 +1,4 @@
 type IconLit = { icon: string; toString: () => string };
-function _isIcon(possibleIcon: any): possibleIcon is IconLit {
-  return exists(possibleIcon?.icon);
-}
 
 function _buildIconsObj<T1 extends readonly T2[] | [], T2 extends string>(
   unformattedIcons: T1,
@@ -13,9 +10,9 @@ function _buildIconsObj<T1 extends readonly T2[] | [], T2 extends string>(
         ? unformattedIcons[i].substring(_numIconTag.length)
         : unformattedIcons[i],
       toString: function () {
-        return `$$#@%${JSON.stringify({
+        return `<MiwiElement>${JSON.stringify({
           icon: unformattedIcons[i],
-        })}%@#$$`;
+        })}</MiwiElement>`;
       },
     };
   }

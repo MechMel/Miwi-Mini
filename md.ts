@@ -2,6 +2,7 @@
 // box.row([...]);
 // box.column([...]);
 // box.stack([...]);
+//const box = Widget.template();
 const box = widgetTemplate({
   width: Size.shrink,
   height: Size.shrink,

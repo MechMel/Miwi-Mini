@@ -174,21 +174,31 @@ const Var = callable({
 
   /** @About Creates a var for a specific, literal type.
    * @example
-   * type Num<P extends VarPerms = RW> = VarSubtype<P, typeof Num>;
+   * type Num<P extends VarPerms = R> = Type<P, typeof Num>;
    * const Num = Var.subtype({
-   *   isThisType: (x) => typeof x === `number`,
-   *   defaultInts: [0],
+   *   is: (x) => typeof x === `number`,
+   *   construct: (v: number) => v,
    * });
    */
-  subtype: <T = any, StaticProps extends { [key: string]: any } = {}>(params: {
-    readonly isThisType: (v: any) => boolean;
-    readonly staticProps?: StaticProps;
-    readonly defaultInsts: readonly T[];
-  }) =>
+  newType: <T, S extends { readonly [key: string]: any }>(
+    ntParams: {
+      readonly is: (v: any) => boolean;
+      readonly construct: (...x: any) => T;
+    } & S,
+  ) =>
     callable({
       /** @About Creates a Var from an inital value. */
-      call: <P extends VarPerms = RW>(val: T = params.defaultInsts[0]) =>
-        Var<P, T>(val),
+      call: <P extends VarPerms = RW>(
+        ...cParams: Parameters<typeof ntParams.construct>
+      ) => Var<P, T>(ntParams.construct(...cParams)),
+
+      /** @About Creates a Var from an inital value. */
+      r: (...cParams: Parameters<typeof ntParams.construct>) =>
+        Var<R, T>(ntParams.construct(...cParams)),
+
+      /** @About Creates a Var from an inital value. */
+      rw: (...cParams: Parameters<typeof ntParams.construct>) =>
+        Var<RW, T>(ntParams.construct(...cParams)),
 
       /** @About Creates a Var from read and write functions. */
       fromFuncs: <P extends VarPerms>(funcs: VarFromFuncsParams<P, T>) =>
@@ -196,41 +206,45 @@ const Var = callable({
 
       /** @About Checks whether or not the given value is a variable of this type and returns a
        * reactive boolean. */
-      is: (x: any) => computed(() => params.isThisType(Var.toLit(x)), [x]),
+      is: (x: any) => computed(() => ntParams.is(Var.toLit(x)), [x]),
 
-      defaultInsts: params.defaultInsts,
-
-      ...params.defaultInsts[0],
-
-      ...((exists(params.staticProps)
-        ? params.staticProps
-        : {}) as StaticProps),
-
-      // TODO: Allow subtypes of subtypes of var. For example, Color could be a subtype of Chars.
+      ...(() => {
+        const staticProps: any = {};
+        for (const k in ntParams) {
+          if (k !== `is` && k !== `construct`) {
+            staticProps[k] = ntParams[k];
+          }
+        }
+        return staticProps as Omit<typeof ntParams, `is` | `construct`>;
+      })(),
     }),
 });
 
 /** @About Accepts either a Var or its literal type. e.g. "Bool<R> | boolean" */
 type VarOrLit<P extends VarPerms, T> = T | Var<P, T>;
 
+/** @About Accepts either a Var or its literal type. e.g. "Bool<R> | boolean" */
+type Lit<T> = T extends VarOrLit<R, infer T2> ? T2 : T;
+
+/** @About A shorthand to create a common VarOrLit<> type.
+ * @example
+ * type Num<P extends VarPerms = R> = Type<P, typeof Num>;
+ * const Num = Var.subtype({
+ *   is: (x) => typeof x === `number`,
+ *   construct: (v: number) => v,
+ * });
+ */
+type Type<
+  P extends VarPerms,
+  T extends {
+    (...args: any): { value: any };
+    is(x: any): VarOrLit<P, boolean>;
+  },
+> = ReturnType<T>[`value`] | Var<P, ReturnType<T>[`value`]>;
+
 /** @About Retrieves the read/write permissions of any type. */
 // We assume that literals should be treated as read-only, because they are used when a value doesn't change.
 type GetVarPerms<V> = V extends Var<RW, any> ? RW : R;
-
-/** @About This is how we usually handle subtypes of Var.
- * @example
- * type Num<P extends VarPerms = RW> = VarSubtype<P, typeof Num>;
- * const Num = Var.subtype({
- *   isThisType: (x) => typeof x === `number`,
- *   defaultInts: [0],
- * });
- */
-type VarSubtype<P extends VarPerms, T> = VarOrLit<
-  P,
-  `defaultInsts` extends keyof T
-    ? T[`defaultInsts`][keyof T[`defaultInsts`] & number]
-    : T
->;
 
 /** @About Checks whether or not the two given Vars are equal. */
 const equ = (x: VarOrLit<R, any>, y: VarOrLit<R, any>) =>

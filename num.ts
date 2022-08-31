@@ -1,8 +1,8 @@
 /** @About A reactive, numeric variable. */
-type Num<P extends VarPerms = R> = VarSubtype<P, typeof Num>;
-const Num = Var.subtype({
-  isThisType: (x) => typeof x === `number`,
-  defaultInsts: [0],
+type Num<P extends VarPerms = R> = VarSubtype<P, number>;
+const Num = Var.newType({
+  is: (x) => typeof x === `number`,
+  construct: (val: number = 0) => val,
 });
 
 /** @About A numeric addition operator that automatically determines whether to be reative or not. */
