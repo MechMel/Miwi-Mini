@@ -18,4 +18,8 @@ const callable = function <C extends { call: Function }>(
 
 type OneOrMore<P extends VarPerms, T> = T | VarOrLit<P, T[]>;
 
+type OmitToNever<T, Keys extends string | symbol | number> = Omit<T, Keys> & {
+  [key in Keys]: never;
+};
+
 type Values<T> = T[keyof T];

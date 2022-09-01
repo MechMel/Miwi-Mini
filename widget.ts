@@ -5,12 +5,14 @@
 //
 
 // SECTION: Contents
-type Contents = OneOrMore<R, Str | Bool | Num | Icon | Widget>;
-const isContent = function (possibleContent: any): possibleContent is Contents {
+type WidgetContent = OneOrMore<R, Str | Bool | Num | Icon | Widget>;
+const isContent = function (
+  possibleContent: any,
+): possibleContent is WidgetContent {
   let isActuallyContent = false;
   if (Var.toLit(List.is(possibleContent))) {
     isActuallyContent = true;
-    for (const i in possibleContent) {
+    for (const i in Var.toLit(possibleContent)) {
       isActuallyContent = isActuallyContent && isContent(possibleContent[i]);
     }
   } else {
@@ -24,76 +26,82 @@ const isContent = function (possibleContent: any): possibleContent is Contents {
   return isActuallyContent;
 };
 type _contentCompiler = {
-  isThisType: (contents: Contents) => boolean;
+  isThisType: (contents: WidgetContent) => boolean;
   compile: (params: {
-    contents: any;
-    parent: Widget<R>;
+    // We use "any" so that children can specify their own type
+    contents: NotVar & any;
+    parent: Lit<Widget>;
     startZIndex: number;
   }) => _ContentCompilationResults;
 };
 type _ContentCompilationResults = {
-  htmlElements: Node[];
-  widthGrows: Bool<R>;
-  heightGrows: Bool<R>;
-  greatestZIndex: number;
+  htmlElements: List<R, VarOrLit<R, Node>>;
+  widthGrows: Bool;
+  heightGrows: Bool;
+  greatestZIndex: Num;
 };
 const _contentCompilers: _contentCompiler[] = [];
 const _addNewContentCompiler = (newCompiler: _contentCompiler) =>
   _contentCompilers.push(newCompiler);
 const compileContentsToHtml = function (params: {
-  contents: Contents;
-  parent: Widget<R>;
+  contents: WidgetContent;
+  parent: Widget;
   startZIndex: number;
-}): _ContentCompilationResults {
-  for (const i in _contentCompilers) {
-    if (_contentCompilers[i].isThisType(params.contents)) {
-      return _contentCompilers[i].compile({
-        contents: params.contents,
-        parent: params.parent,
-        startZIndex: params.startZIndex,
-      });
+}): VarOrLit<R, _ContentCompilationResults> {
+  return computed(() => {
+    for (const i in _contentCompilers) {
+      if (_contentCompilers[i].isThisType(params.contents)) {
+        return _contentCompilers[i].compile({
+          contents: Var.toLit(params.contents),
+          parent: Var.toLit(params.parent),
+          startZIndex: params.startZIndex,
+        });
+      }
     }
-  }
-  console.log(params.contents?.value);
-  throw `Encountered an error in "miwi/widget.ts.compileContentsToHtml". Could not find a content compiler for ${JSON.stringify(
-    params.contents,
-    null,
-    2,
-  )}`;
+    throw `Encountered an error in "miwi/widget.ts.compileContentsToHtml". Could not find a content compiler for ${JSON.stringify(
+      params.contents,
+      null,
+      2,
+    )}`;
+  }, [params.contents, params.parent]);
 };
 _addNewContentCompiler({
-  isThisType: (contents: Contents) => Var.toLit(List.is(contents)),
+  isThisType: (contents: WidgetContent) => Var.toLit(List.is(contents)),
   compile: function (params: {
-    contents: (Str<R> | Bool<R> | Num<R> | Required<IconLit> | Widget<R>)[];
-    parent: Widget<R>;
+    contents: (Str | Bool | Num | Icon | Widget)[];
+    parent: Lit<Widget>;
     startZIndex: number;
-  }): _ContentCompilationResults {
+  }) {
     // We'll split arrays into their individual elements and recurssively convert them to html.
     const myInfo: _ContentCompilationResults = {
       htmlElements: [],
-      widthGrows: false,
-      heightGrows: false,
-      greatestZIndex: params.startZIndex,
+      widthGrows: false as Bool,
+      heightGrows: false as Bool,
+      greatestZIndex: params.startZIndex as number,
     };
+    const htmlElementLists: List<R, VarOrLit<R, Node>>[] = [];
     for (let i in params.contents) {
       const thisWidgetInfo = compileContentsToHtml({
         contents: params.contents[i],
         parent: params.parent,
         startZIndex:
           Var.toLit(params.parent.contentAxis) === Axis.z
-            ? myInfo.greatestZIndex + 1
+            ? Var.toLit(myInfo.greatestZIndex) + 1
             : params.startZIndex,
       });
-      for (const j in thisWidgetInfo.htmlElements) {
-        myInfo.htmlElements.push(thisWidgetInfo.htmlElements[j]);
-      }
-      myInfo.widthGrows = thisWidgetInfo.widthGrows || myInfo.widthGrows;
-      myInfo.heightGrows = thisWidgetInfo.heightGrows || myInfo.heightGrows;
-      myInfo.greatestZIndex = Math.max(
+      htmlElementLists.push(thisWidgetInfo.htmlElements);
+      myInfo.widthGrows = or(thisWidgetInfo.widthGrows, myInfo.widthGrows);
+      myInfo.heightGrows = or(thisWidgetInfo.heightGrows, myInfo.heightGrows);
+      myInfo.greatestZIndex = max(
         myInfo.greatestZIndex,
         thisWidgetInfo.greatestZIndex,
       );
     }
+    myInfo.htmlElements = htmlElementLists.reduce(
+      // Replace with List.concat()
+      (prev, curr) => List.concat(prev, curr),
+      List<R, Var<R, Node>>(),
+    );
     return myInfo;
   },
 });
@@ -102,9 +110,9 @@ _addNewContentCompiler({
  * for creating HTML elements. */
 function createHtmlElement(params: {
   tag: string;
-  content?: Node[] | Node;
+  content?: VarOrLit<R, Node[] | Node>;
   onClick?: () => void;
-  style?: { [key: string]: Str<R> | Num<R> | Bool<R> };
+  style?: { [key: string]: Str | Num | Bool };
   elementType?: string;
   id?: string;
   class?: string;
@@ -124,7 +132,7 @@ function createHtmlElement(params: {
   // Set style
   if (exists(params.style)) {
     for (const key in params.style) {
-      setLWhenRChanges(
+      doOnChange(
         // We need to do "?? ``" because setting a style prop to undefined doesn't clear the old value
         (x) => ((htmlElement.style as any)[key] = Var.toLit(x) ?? ``),
         params.style[key],
@@ -134,13 +142,29 @@ function createHtmlElement(params: {
 
   // Add children
   if (exists(params.content)) {
-    if (Var.toLit(List.is(params.content))) {
-      for (const child of params.content as Node[]) {
-        htmlElement.appendChild(child);
+    doOnChange(() => {
+      while (htmlElement.firstChild) {
+        htmlElement.removeChild(htmlElement.firstChild);
       }
-    } else {
-      htmlElement.appendChild(params.content as Node);
-    }
+      if (Var.toLit(List.is(params.content))) {
+        const litList = Var.toLit(params.content as any);
+        (litList as VarOrLit<R, Node>[]).map((node) => {
+          let litNode: Node | undefined = undefined;
+          doOnChange(() => {
+            // Find a more permanent way to stop watching when the content changes.
+            if (Var.toLit(params.content as any) === litList) {
+              if (exists(litNode)) {
+                htmlElement.removeChild(litNode);
+              }
+              litNode = Var.toLit(node);
+              htmlElement.appendChild(litNode);
+            }
+          }, node);
+        });
+      } else {
+        htmlElement.appendChild(Var.toLit(params.content as VarOrLit<R, Node>));
+      }
+    }, params.content);
   }
 
   return htmlElement;
@@ -157,9 +181,9 @@ const _inlineContentCloseTag = `</MiwiElement>`;
 // SECTION: Widget Styler
 /** @About Used to put all widget styling in one spot. */
 const widgetStyleBuilders: ((params: {
-  widget: Widget<R>;
-  parent: Widget<R>;
-  childrenInfo: _ContentCompilationResults;
+  widget: Widget;
+  parent: Widget;
+  childrenInfo: VarOrLit<R, _ContentCompilationResults>;
   startZIndex: number;
 }) => _WidgetStylePart)[] = [];
 type _WidgetStylePart = {
@@ -167,10 +191,7 @@ type _WidgetStylePart = {
   preferParent?: { [key: string]: _WidgetCompilerStyleProp };
   preferChild?: { [key: string]: _WidgetCompilerStyleProp };
 };
-type _BasicWidgetCompilerStyleProp = Str<R> | Num<R> | Bool<R>;
-type _WidgetCompilerStyleProp =
-  | Var<R, _BasicWidgetCompilerStyleProp>
-  | _BasicWidgetCompilerStyleProp;
+type _WidgetCompilerStyleProp = Str | Num | Bool;
 
 /** @About Converts a widget to an html element along with some other stats. */
 _addNewContentCompiler({
@@ -178,19 +199,19 @@ _addNewContentCompiler({
     return Var.toLit(Widget.is(x));
   },
   compile: function (params: {
-    contents: Widget<R>;
-    parent: Widget<R>;
+    contents: Lit<Widget>;
+    parent: Lit<Widget>;
     startZIndex: number;
   }): _ContentCompilationResults {
     // Compile the children
     const childrenInfo = compileContentsToHtml({
-      contents: params.contents.contents as Contents,
+      contents: params.contents.contents as WidgetContent,
       parent: params.contents,
       startZIndex: params.startZIndex,
     });
 
     // Compile the styles
-    const shouldCreateChild = Var.toLit(params.contents.contentAxis) === Axis.z;
+    //const shouldCreateChild = Var.toLit(params.contents.contentAxis) === Axis.z;
     const parentStyle: any = {};
     const childStyle: any = {};
     for (const i in widgetStyleBuilders) {
@@ -204,11 +225,11 @@ _addNewContentCompiler({
         parentStyle[key] = newProps.preferParent[key];
       }
       for (const key in newProps.preferChild) {
-        if (shouldCreateChild) {
+        /*if (shouldCreateChild) {
           childStyle[key] = newProps.preferChild[key];
-        } else {
-          parentStyle[key] = newProps.preferChild[key];
-        }
+        } else {*/
+        parentStyle[key] = newProps.preferChild[key];
+        /*}*/
       }
     }
 
@@ -225,7 +246,8 @@ _addNewContentCompiler({
           tag: Var.toLit(Var.toLit(params.contents).htmlTag),
           onClick: params.contents.onTap,
           style: parentStyle,
-          content: shouldCreateChild
+          content:
+            /*shouldCreateChild
             ? [
                 createHtmlElement({
                   tag: `div`,
@@ -238,7 +260,7 @@ _addNewContentCompiler({
                   content: childrenInfo.htmlElements,
                 }),
               ]
-            : childrenInfo.htmlElements,
+            :*/ childrenInfo.htmlElements,
         }),
       ],
     };
@@ -269,21 +291,21 @@ const Size = Var.newType({
     flex: 1,
   }),
 });
-const _getSizeGrows = (givenSize: Size<R>, childGrows: Bool<R>) =>
+const _getSizeGrows = (givenSize: Size, childGrows: Bool) =>
   or(FlexSize.is(givenSize), and(equ(givenSize, Size.shrink), childGrows));
 widgetStyleBuilders.push(function (params: {
-  widget: Widget<R>;
-  parent: Widget<R>;
+  widget: Widget;
+  parent: Widget;
   childrenInfo: _ContentCompilationResults;
 }) {
-  const computeSizeInfo = (givenSize: Size<R>, childGrows: Bool<R>) => {
+  const computeSizeInfo = (givenSize: Size, childGrows: Bool) => {
     const sizeGrows = _getSizeGrows(givenSize, childGrows);
     const exactSize = ifel(
       Str.is(givenSize),
-      givenSize as Str<R>,
+      givenSize as Str,
       ifel(
         and(not(equ(givenSize, Size.shrink)), not(sizeGrows)),
-        numToStandardHtmlUnit(givenSize as Num<R>),
+        numToStandardHtmlUnit(givenSize as Num),
         ``,
       ),
     );
@@ -312,12 +334,12 @@ widgetStyleBuilders.push(function (params: {
         equ(params.parent.contentAxis, Axis.vertical),
         ifel(
           FlexSize.is(params.widget.height),
-          (params.widget.height as FlexSize<R>).flex,
+          (params.widget.height as FlexSize).flex,
           ifel(heightGrows, 1, ``),
         ),
         ifel(
           FlexSize.is(params.widget.width),
-          (params.widget.width as FlexSize<R>).flex,
+          (params.widget.width as FlexSize).flex,
           ifel(widthGrows, 1, ``),
         ),
       ),
@@ -337,9 +359,9 @@ widgetStyleBuilders.push(function (params: {
   };
 });
 
-const old_numToStandardHtmlUnit = (num: Num<R>) =>
+const old_numToStandardHtmlUnit = (num: Num) =>
   `${mul(num, div(_pageWidthVmin, 24))}vmin`;
-const numToStandardHtmlUnit = (num: Num<R>) =>
+const numToStandardHtmlUnit = (num: Num) =>
   computed(() => `${mul(num, div(_pageWidthVmin, 24))}vmin`, [num]);
 
 //
@@ -349,11 +371,29 @@ const numToStandardHtmlUnit = (num: Num<R>) =>
 //
 
 // SECTION: Box Decoration
-// type HSV = `${number} ${number} ${number}`;
+/** @About Models HSV or hexadecimal color */
 type Color<P extends VarPerms = R> = Type<P, typeof Color>;
+// Implement HSLA and more constrained strings
 const Color = Var.newType({
-  is: (v) => typeof v === `string` && v.startsWith(`#`),
-  construct: (v: `#${string}`) => v,
+  is: (x) =>
+    typeof x === `string` && (x.startsWith(`#`) || x.startsWith(`hsv`)),
+  construct: (
+    ...v:
+      | [`#${string}`]
+      | [number, number, number]
+      | [`${number} ${number} ${number}`]
+  ): `#${string}` | `hsv(${number}, ${number}, ${number})` => {
+    if (v.length === 1 && v[0].startsWith(`#`)) {
+      return v[0] as `#${string}`;
+    } else {
+      const nums =
+        v.length === 3
+          ? v
+          : // We parse the hsv string as floats, so that devs can stringify any type of num into the params.
+            v[0].split(` `).map((v) => Math.round(parseFloat(v)));
+      return `hsv(${nums[0]}, ${nums[1]}, ${nums[2]})`;
+    }
+  },
   white: `#ffffffff`,
   almostWhite: `#f9fafdff`,
   pink: `#e91e63ff`,
@@ -389,7 +429,7 @@ const Material = Var.newType({
   is: (v) => Var.toLit(Color.is(v)) || Var.toLit(ImageRef.is(v)),
   construct: (v: Lit<Color> | Lit<ImageRef>) => v,
 });
-widgetStyleBuilders.push((params: { widget: Widget<R> }) => {
+widgetStyleBuilders.push((params: { widget: Widget }) => {
   const backgroundIsColor = Color.is(params.widget.background);
   return {
     preferParent: {
@@ -447,7 +487,7 @@ widgetStyleBuilders.push((params: { widget: Widget<R> }) => {
 
 // SECTION: Padding
 type Padding = number; //Num | [Num, Num] | [Num, Num, Num, Num];
-widgetStyleBuilders.push((params: { widget: Widget<R> }) => {
+widgetStyleBuilders.push((params: { widget: Widget }) => {
   return {
     preferParent: {
       padding: numToStandardHtmlUnit(params.widget.padding),
@@ -478,8 +518,8 @@ const Align = Var.newType({
 });
 widgetStyleBuilders.push(
   (params: {
-    widget: Widget<R>;
-    parent: Widget<R>;
+    widget: Widget;
+    parent: Widget;
     childrenInfo: _ContentCompilationResults;
   }) => {
     const parentIsZAxis = equ(params.parent.contentAxis, Axis.z);
@@ -549,7 +589,7 @@ widgetStyleBuilders.push(
             ifel(
               and(
                 equ(params.widget.contentSpacing, Spacing.spaceBetween),
-                equ(params.childrenInfo.htmlElements.length, 1),
+                equ(List.len(params.childrenInfo.htmlElements), 1),
               ),
               Spacing.spaceAround,
               params.widget.contentSpacing,
@@ -608,20 +648,18 @@ const Axis = Var.newType({
   toString: () => `vertical`,
   ..._axisOptions,
 });
-widgetStyleBuilders.push(
-  (params: { widget: Widget<R>; startZIndex: number }) => {
-    return {
-      preferParent: {
-        flexDirection: ifel(
-          equ(params.widget.contentAxis, Axis.vertical),
-          `column`,
-          `row`,
-        ),
-        zIndex: params.startZIndex,
-      },
-    };
-  },
-);
+widgetStyleBuilders.push((params: { widget: Widget; startZIndex: number }) => {
+  return {
+    preferParent: {
+      flexDirection: ifel(
+        equ(params.widget.contentAxis, Axis.vertical),
+        `column`,
+        `row`,
+      ),
+      zIndex: params.startZIndex,
+    },
+  };
+});
 
 //
 //
@@ -630,7 +668,7 @@ widgetStyleBuilders.push(
 //
 
 // SECTION: Content Is Scrollable
-widgetStyleBuilders.push((params: { widget: Widget<R> }) => {
+widgetStyleBuilders.push((params: { widget: Widget }) => {
   return {
     preferParent: {
       overflowX: ifel(
@@ -668,7 +706,7 @@ const Spacing = Var.newType({
   construct: (v: number | Values<typeof _spacingOptions>) => v,
   ..._spacingOptions,
 });
-widgetStyleBuilders.push((params: { widget: Widget<R> }) => {
+widgetStyleBuilders.push((params: { widget: Widget }) => {
   return {
     preferChild: {
       rowGap:
@@ -694,7 +732,7 @@ widgetStyleBuilders.push((params: { widget: Widget<R> }) => {
 // SECTION: Text Style
 // TODO: Change textColor to textMaterial. Then use text to mask a backdrop for gradiants or images.
 // Also, have mask be a valid material so that the same back drop can be used for several different elements.
-widgetStyleBuilders.push((params: { widget: Widget<R> }) => {
+widgetStyleBuilders.push((params: { widget: Widget }) => {
   return {
     preferParent: {
       fontFamily: `Roboto`,
@@ -709,7 +747,7 @@ widgetStyleBuilders.push((params: { widget: Widget<R> }) => {
   };
 });
 
-const numToFontSize = (num: Num<R>) => numToStandardHtmlUnit(mul(0.825, num));
+const numToFontSize = (num: Num) => numToStandardHtmlUnit(mul(0.825, num));
 
 //
 //
@@ -741,7 +779,7 @@ type WidgetLit = {
   textIsBold: Bool;
   textIsItalic: Bool;
   textColor: Color;
-  contents: Contents;
+  contents: WidgetContent;
   readonly htmlTag: string;
   readonly toString: () => string;
 };
@@ -769,11 +807,15 @@ const _defaultWidget: WidgetLit = {
   htmlTag: `div`,
 };
 type Widget<P extends VarPerms = R> = VarOrLit<P, WidgetLit>;
+const bdk: { a: number; b: boolean } | { a: string; b: string } = {
+  a: 0,
+  b: true,
+};
 const Widget = Var.newType({
   is: (x) => exists(x?.htmlTag),
   construct: (
     options?: _WidgetConstructorOptions,
-    ...contents: Contents[]
+    ...contents: WidgetContent[]
   ): WidgetLit => {
     if (isContent(options)) {
       contents.unshift(options);
@@ -795,33 +837,38 @@ const Widget = Var.newType({
     };
     return newWidget;
   },
-  template: (options?: _WidgetConstructorOptions, ...contents: Contents[]) =>
+  template: (
+    options?: _WidgetConstructorOptions,
+    ...contents: WidgetContent[]
+  ) =>
     callable({
-      call: (options?: _WidgetConstructorOptions, ...contents: Contents[]) =>
-        Widget(options, contents),
+      call: (
+        options?: _WidgetConstructorOptions,
+        ...contents: WidgetContent[]
+      ) => Widget(options, contents),
       ...Widget(options, contents).value,
     }),
   ..._defaultWidget,
 });
 
 type _WidgetTemplate = WidgetLit & {
-  (options?: _WidgetConstructorOptions, ...contents: Contents[]): WidgetLit;
+  (
+    options?: _WidgetConstructorOptions,
+    ...contents: WidgetContent[]
+  ): WidgetLit;
 };
 type _WidgetConstructorOptions =
-  | Partial<OmitToNever<Widget<R>, `htmlTag` | `contents`>>
-  | Contents;
-type OmitToNever<T, Keys extends string | symbol | number> = Omit<T, Keys> & {
-  [key in Keys]: never;
-};
+  | Partial<OmitToNever<WidgetLit, `htmlTag` | `contents`>>
+  | WidgetContent;
 
 /** @About This is a shorthand for creating custom widgets */
-function widgetTemplate<T extends Required<Omit<Widget<R>, `toString`>>>(
+function widgetTemplate<T extends Required<Omit<WidgetLit, `toString`>>>(
   defaultWidget: T,
 ): _WidgetTemplate {
   const build: any = function (
     invocationOptions?: _WidgetConstructorOptions,
-    ...invocationContents: Contents[]
-  ): Widget<R> {
+    ...invocationContents: WidgetContent[]
+  ): Widget {
     if (isContent(invocationOptions)) {
       invocationContents.unshift(invocationOptions);
       invocationOptions = {};
@@ -865,12 +912,12 @@ const Icon = Var.newType({
 _addNewContentCompiler({
   isThisType: (x) => Var.toLit(Icon.is(x)),
   compile: function (params: {
-    contents: Icon;
-    parent: Widget<R>;
+    contents: Lit<Icon>;
+    parent: Lit<Widget>;
     startZIndex: number;
   }): _ContentCompilationResults {
     const textNode = document.createTextNode(``);
-    setLWhenRChanges(
+    doOnChange(
       (x) => (textNode.nodeValue = x.toString()),
       params.contents.icon,
     );
@@ -899,7 +946,7 @@ _addNewContentCompiler({
 });
 
 /** @About converts from standard Moa units to a size that makes sense for icons. */
-const numToIconSize = (num: Num<R>) => numToStandardHtmlUnit(mul(0.9, num));
+const numToIconSize = (num: Num) => numToStandardHtmlUnit(mul(0.9, num));
 
 //
 //
@@ -909,18 +956,18 @@ const numToIconSize = (num: Num<R>) => numToStandardHtmlUnit(mul(0.9, num));
 
 // SECTION: Content Literals
 _addNewContentCompiler({
-  isThisType: (contents: Contents) =>
+  isThisType: (contents: WidgetContent) =>
     Var.toLit(Str.is(contents)) ||
     Var.toLit(Num.is(contents)) ||
     Var.toLit(Bool.is(contents)),
   compile: function (params: {
     contents: string | number | boolean;
-    parent: Widget<R>;
+    parent: Lit<Widget>;
     startZIndex: number;
   }): _ContentCompilationResults {
-    const paragraphParts: Node[] = [];
+    const paragraphParts: VarOrLit<R, Node>[] = [];
     let greatestZIndex = params.startZIndex;
-    if (typeof params.contents === `string`) {
+    /*if (typeof params.contents === `string`) {
       const contentsAsString = params.contents;
       let openTagIndex = contentsAsString.indexOf(_inlineContentOpenTag);
       let closeTagIndex = 0 - _inlineContentCloseTag.length;
@@ -947,7 +994,7 @@ _addNewContentCompiler({
               openTagIndex + _inlineContentOpenTag.length,
               closeTagIndex,
             ),
-          ) as Widget<R>,
+          ) as Widget,
           parent: params.parent,
           startZIndex: params.startZIndex,
         });
@@ -978,14 +1025,17 @@ _addNewContentCompiler({
           ),
         );
       }
-    } else {
-      const textNode = document.createTextNode(params.contents.toString());
-      setLWhenRChanges(
-        (x) => (textNode.nodeValue = x.toString()),
-        params.contents,
-      );
-      paragraphParts.push(textNode);
-    }
+    } else {*/
+    paragraphParts.push(document.createTextNode(params.contents.toString()));
+    //const textNode = document.createTextNode(params.contents.toString());
+    //doOnChange((x) => (textNode.nodeValue = x.toString()), params.contents);
+    /*paragraphParts.push(
+      computed(
+        () => document.createTextNode(params.contents.toString()),
+        [params.contents],
+      ),
+    );*/
+    //}
 
     const htmlElement = createHtmlElement({
       tag: `p`,
@@ -1060,16 +1110,19 @@ function _defaultPageParams() {
     }
   }
   return params as Partial<
-    Omit<Widget<R>, `htmlTag` | `width` | `height` | `contents`> & {
-      name: string;
-    }
+    Omit<
+      WidgetLit & {
+        name: string;
+      },
+      `toString` | `htmlTag` | `width` | `height` | `contents`
+    >
   >;
 }
 
 /** @Note Describes a web page. */
 const openPage = function (
   options = _defaultPageParams() as ReturnType<typeof _defaultPageParams>,
-  ...contents: Contents[]
+  ...contents: WidgetContent[]
 ) {
   const currentPage = document.getElementById(`currentPage`);
   if (!exists(currentPage)) {
@@ -1080,35 +1133,43 @@ const openPage = function (
     }
 
     // Render page
-    document.getElementById(`pageParent`)?.appendChild(
-      compileContentsToHtml({
-        contents: _pageWidget(options, contents as Contents),
-        parent: {
-          width: Size.shrink,
-          height: Size.shrink,
-          cornerRadius: 0,
-          outlineColor: Color.transparent,
-          outlineSize: 0,
-          background: Color.transparent,
-          shadowSize: 0,
-          shadowDirection: Align.center,
-          onTap: () => {},
-          padding: 0,
-          contentAlign: Align.center,
-          contentAxis: Axis.vertical,
-          contentIsScrollableX: false,
-          contentIsScrollableY: false,
-          contentSpacing: 0,
-          textSize: 1,
-          textIsBold: false,
-          textIsItalic: false,
-          textColor: Color.black,
-          contents: [],
-          htmlTag: `div`,
-        },
-        startZIndex: 0,
-      }).htmlElements[0],
-    );
+    const currentPage = compileContentsToHtml({
+      contents: _pageWidget(options, contents as WidgetContent),
+      parent: {
+        width: Size.shrink,
+        height: Size.shrink,
+        cornerRadius: 0,
+        outlineColor: Color.transparent,
+        outlineSize: 0,
+        background: Color.transparent,
+        shadowSize: 0,
+        shadowDirection: Align.center,
+        onTap: () => {},
+        padding: 0,
+        contentAlign: Align.center,
+        contentAxis: Axis.vertical,
+        contentIsScrollableX: false,
+        contentIsScrollableY: false,
+        contentSpacing: 0,
+        textSize: 1,
+        textIsBold: false,
+        textIsItalic: false,
+        textColor: Color.black,
+        contents: [],
+        htmlTag: `div`,
+        toString: () => ``,
+      },
+      startZIndex: 0,
+    });
+    doOnChange(() => {
+      const pageParentElement = document.getElementById(`pageParent`);
+      while (pageParentElement?.firstChild) {
+        pageParentElement?.removeChild(pageParentElement?.firstChild);
+      }
+      document
+        .getElementById(`pageParent`)
+        ?.appendChild(Var.toLit(currentPage.htmlElements[0]));
+    }, currentPage);
     document.title = options.name!;
   }
 };

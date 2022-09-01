@@ -2,8 +2,8 @@
 // box.row([...]);
 // box.column([...]);
 // box.stack([...]);
-//const box = Widget.template();
-const box = widgetTemplate({
+const box = Widget.template();
+/*const box = widgetTemplate({
   width: Size.shrink,
   height: Size.shrink,
   onTap: undefined,
@@ -25,7 +25,7 @@ const box = widgetTemplate({
   textColor: Color.black,
   contents: [],
   htmlTag: `div`,
-});
+});*/
 
 /** @About A box is the simplest UI widget. */
 const pageBody = widgetTemplate({

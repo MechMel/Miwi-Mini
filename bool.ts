@@ -1,30 +1,30 @@
 /** @About A reactive, boolean variable. */
-type Bool<P extends VarPerms = R> = VarSubtype<P, boolean>;
+type Bool<P extends VarPerms = R> = Type<P, typeof Bool>;
 const Bool = Var.newType({
   is: (x) => typeof x === `boolean`,
   construct: (v: boolean = false) => v,
 });
 
 /** @About A boolean "and" operator that automatically determines whether to be reactive or not. */
-const and = (...args: Bool<R>[]) =>
+const and = (...args: Bool[]) =>
   computed(
     () => args.reduce((x, y) => x && Var.toLit(y), true) as boolean,
     args,
   );
 
 /** @About A boolean "or" operator that automatically determines whether to be reactive or not. */
-const or = (...args: Bool<R>[]) =>
+const or = (...args: Bool[]) =>
   computed(
     () => args.reduce((x, y) => x || Var.toLit(y), false) as boolean,
     args,
   );
 
 /** @About A boolean "not" operator that automatically determines whether to be reactive or not. */
-const not = (x: Bool<R>) => computed(() => !Var.toLit(x), [x]);
+const not = (x: Bool) => computed(() => !Var.toLit(x), [x]);
 
 /** @About A variant of "C ? T: F" that automatically determines whether to be reactive or not. */
-const ifel = <T, F>(
-  condition: Bool<R>,
+const ifel = <T extends NotVar, F extends NotVar>(
+  condition: Bool,
   onTrue: VarOrLit<R, T>,
   onFalse: VarOrLit<R, F>,
 ) =>

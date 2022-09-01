@@ -8,6 +8,7 @@ const VarEvent = callable({
     const trigger = () => listeners.forEach((listener) => listener());
     for (const t of triggers) t.addListener(trigger);
     return {
+      // Maybe provide an add and run options
       addListener: function (listener?: () => any) {
         if (exists(listener) && !listeners.includes(listener!)) {
           listeners.push(listener!);
@@ -37,41 +38,43 @@ type VarPerms = R | RW;
 // TypeScript doesn't yet suport write only
 type VarFromFuncsParams<P extends VarPerms, T> = {
   read(): T;
+  // Maybe have >>> cleanUp(): void
   readonly onChange: VarEvent;
 } & (P extends W ? { write(newVal: T): void } : {});
 
 /** @About Represents a simple variable. */
-type Var<P extends VarPerms, T> = {
+type Var<P extends VarPerms, T extends NotVar> = {
   [Key in  // We get rid of string's props because TypeScript `#${string}` counts as a string object not a string literal
-    | (keyof (T extends string
+    | (keyof (T extends string | any[] // Convert lists into functions
         ? {}
         : T extends { [key: string]: any }
         ? T
         : {}) &
-        string)
+        (string | number))
     | `toString`
     | `value`
     | `onChange`
-    | `_assertRW`]: Key extends `toString`
+    | `_assertRW`
+    | `_assertMiwiVar`]: Key extends `toString`
     ? () => string
     : Key extends `value`
     ? T
     : Key extends `onChange`
     ? VarEvent
-    : Key extends `_assertRW`
-    ? undefined
+    : Key extends `_assertRW` | `_assertMiwiVar`
+    ? true
     : Key extends keyof T
     ? T[Key] extends Function | undefined
       ? T[Key]
       : Var<
           GetVarPerms<T[Key]>,
-          T[Key] extends VarOrLit<R, infer T2> ? T2 : T[Key]
+          T[Key] extends VarOrLit<R, infer T2> ? T2 : T[Key] & NotVar
         >
     : undefined;
 };
 const Var = callable({
   /** @About Creates a Var from an inital value. */
-  call: <P extends VarPerms, T>(val: T) =>
+  call: <P extends VarPerms, T extends NotVar>(val: T) =>
     Var.fromFuncs<P, T>({
       read: () => val,
       onChange: VarEvent(),
@@ -85,7 +88,7 @@ const Var = callable({
     } as any),
 
   /** @About Creates a Var from read and write functions. */
-  fromFuncs: <P extends VarPerms, T>(
+  fromFuncs: <P extends VarPerms, T extends NotVar>(
     funcs: VarFromFuncsParams<P, T>,
   ): Var<P, T> => {
     const _gettersMap: { [key: string | symbol | number]: Var<RW, any> } = {};
@@ -102,6 +105,7 @@ const Var = callable({
               return funcs.read();
             case `onChange`:
               return funcs.onChange;
+            case `_assertMiwiVar`:
             case `_assertRW`:
               return undefined;
             case `toString`:
@@ -167,10 +171,11 @@ const Var = callable({
 
   /** @About Checks whether or not the given value is a variable of any sort. */
   // We can't check "exists(x?.value)" beacuse sometimes value exists, but returns undefined.
-  isVar: <P extends VarPerms, T>(x: Var<P, T> | T): x is Var<P, T> =>
+  isVar: <T extends NotVar>(x: NotVar | Var<R, T>): x is Var<R, T> =>
     exists((x as any)?.onChange),
 
-  toLit: <T>(x: VarOrLit<R, T>): T => (Var.isVar(x) ? x.value : x) as any,
+  toLit: <T extends NotVar>(x: VarOrLit<R, T>): T =>
+    (Var.isVar(x) ? x.value : x) as any,
 
   /** @About Creates a var for a specific, literal type.
    * @example
@@ -180,7 +185,7 @@ const Var = callable({
    *   construct: (v: number) => v,
    * });
    */
-  newType: <T, S extends { readonly [key: string]: any }>(
+  newType: <T extends NotVar, S extends { readonly [key: string]: any }>(
     ntParams: {
       readonly is: (v: any) => boolean;
       readonly construct: (...x: any) => T;
@@ -220,11 +225,21 @@ const Var = callable({
     }),
 });
 
-/** @About Accepts either a Var or its literal type. e.g. "Bool<R> | boolean" */
-type VarOrLit<P extends VarPerms, T> = T | Var<P, T>;
+type NotVar =
+  | string
+  | number
+  | boolean
+  | any[]
+  | {
+      _assertMiwiVar?: never | undefined;
+      [key: string | symbol | number]: any;
+    };
 
 /** @About Accepts either a Var or its literal type. e.g. "Bool<R> | boolean" */
-type Lit<T> = T extends VarOrLit<R, infer T2> ? T2 : T;
+type VarOrLit<P extends VarPerms, T extends NotVar> = T | Var<P, T>;
+
+/** @About Accepts either a Var or its literal type. e.g. "Bool<R> | boolean" */
+type Lit<T> = NotVar & (T extends VarOrLit<R, infer T2> ? T2 : T);
 
 /** @About A shorthand to create a common VarOrLit<> type.
  * @example
@@ -236,11 +251,11 @@ type Lit<T> = T extends VarOrLit<R, infer T2> ? T2 : T;
  */
 type Type<
   P extends VarPerms,
-  T extends {
-    (...args: any): { value: any };
+  S extends {
+    (...args: any): { value: NotVar };
     is(x: any): VarOrLit<P, boolean>;
   },
-> = ReturnType<T>[`value`] | Var<P, ReturnType<T>[`value`]>;
+> = ReturnType<S>[`value`] | Var<P, ReturnType<S>[`value`]>;
 
 /** @About Retrieves the read/write permissions of any type. */
 // We assume that literals should be treated as read-only, because they are used when a value doesn't change.
@@ -251,13 +266,16 @@ const equ = (x: VarOrLit<R, any>, y: VarOrLit<R, any>) =>
   computed(() => Var.toLit(x) === Var.toLit(y), [x, y]);
 
 /** @About Calls the left hand set function whenever the right hand value changes. */
-const setLWhenRChanges = <T>(l: (newVal: T) => void, r: VarOrLit<R, T>) => {
-  if (Var.isVar(r)) r.onChange.addListener(() => l(Var.toLit(r)));
-  l(Var.toLit(r));
+const doOnChange = <T extends NotVar>(
+  f: (newVal: T) => void,
+  v: VarOrLit<R, T>,
+) => {
+  if (Var.isVar(v)) v.onChange.addListener(() => f(Var.toLit(v)));
+  f(Var.toLit(v));
 };
 
 /** @About An easy short hand to create a computed, read-only Var. */
-const computed = function <T>(
+const computed = function <T extends NotVar>(
   compute: () => T,
   triggers: (VarOrLit<R, any> | VarEvent)[],
 ): VarOrLit<R, T> {

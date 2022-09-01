@@ -1,8 +1,8 @@
 /** @About A reactive, characters variable. */
-type Str<P extends VarPerms = R> = VarSubtype<P, string>;
+type Str<P extends VarPerms = R> = Type<P, typeof Str>;
 const Str = Var.newType({
   is: (x) => typeof x === `string`,
-  construct: (val: string = ``) => val,
+  construct: (v: string = ``) => v,
 });
 
 // Str.space & Str.empty
