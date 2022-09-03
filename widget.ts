@@ -943,6 +943,7 @@ _addNewContentCompiler({
           tag: `span`,
           class: `material-symbols-outlined`,
           style: {
+            cursor: `default`,
             width: numToIconSize(params.parent.textSize),
             height: numToIconSize(params.parent.textSize),
             color: params.parent.textColor,
