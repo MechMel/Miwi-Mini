@@ -25,14 +25,14 @@ const List = callable({
   ) => computed(() => (list as any)[Var.toLit(i)], [list, i]),
 
   push: <T extends NotVar = NotVar>(
-    list: List<R, VarOrLit<R, T>>,
+    list: List<RW, VarOrLit<R, T>>,
     x: VarOrLit<R, T>,
   ) => {
     Var.toLit(list).push(x);
     if (Var.isVar(list)) list.onChange.trigger();
   },
 
-  pop: <T extends NotVar = NotVar>(list: List<R, VarOrLit<R, T>>) => {
+  pop: <T extends NotVar = NotVar>(list: List<RW, VarOrLit<R, T>>) => {
     Var.toLit(list).pop();
     if (Var.isVar(list)) list.onChange.trigger();
   },

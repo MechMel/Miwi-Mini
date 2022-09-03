@@ -1090,19 +1090,7 @@ _addNewContentCompiler({
 
 // SECTION: Compile Page
 const _pageWidthVmin = 40;
-
-const pageStack = (() => {
-  let _pageStack: WidgetLit[] = [];
-  const onChange = OnChange();
-  return List.fromFuncs<RW, WidgetLit>({
-    read: () => _pageStack,
-    write: (newStack: WidgetLit[]) => {
-      _pageStack = newStack;
-      onChange.trigger();
-    },
-    onChange: onChange,
-  });
-})();
+const pageStack = List<RW, Widget>();
 
 doOnChange(() => {
   // Remove the old page
@@ -1112,7 +1100,9 @@ doOnChange(() => {
   }
 
   // Load new page
-  const newPageWidget = Var.toLit(pageStack)[Var.toLit(pageStack).length - 1];
+  const newPageWidget = Var.toLit(
+    Var.toLit(pageStack)[Var.toLit(pageStack).length - 1],
+  );
   if (exists(newPageWidget)) {
     const newPageElement = compileContentsToHtml({
       contents: newPageWidget,
@@ -1134,7 +1124,9 @@ doOnChange(() => {
 
 const currentPage = Widget.fromFuncs<RW>({
   read: () =>
-    Var.toLit(pageStack)[Var.toLit(pageStack).length - 1] ?? Widget.lit(),
+    Var.toLit(
+      Var.toLit(pageStack)[Var.toLit(pageStack).length - 1] ?? Widget.lit(),
+    ),
   write: (w: WidgetLit) => List.push(pageStack, w),
   onChange: pageStack.onChange,
 });
