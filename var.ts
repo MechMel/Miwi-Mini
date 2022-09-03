@@ -1,6 +1,6 @@
 /** @About Represents a basic event that can be listened to. */
-type VarEvent = ReturnType<typeof VarEvent>;
-const VarEvent = callable({
+type OnChange = ReturnType<typeof OnChange>;
+const OnChange = callable({
   call: function ({
     listeners = [] as (() => any)[],
     triggers = [] as { addListener: (listener?: () => any) => void }[],
@@ -39,7 +39,7 @@ type VarPerms = R | RW;
 type VarFromFuncsParams<P extends VarPerms, T> = {
   read(): T;
   // Maybe have >>> cleanUp(): void
-  readonly onChange: VarEvent;
+  readonly onChange: OnChange;
 } & (P extends W ? { write(newVal: T): void } : {});
 
 /** @About Represents a simple variable. */
@@ -60,7 +60,7 @@ type Var<P extends VarPerms, T extends NotVar> = {
     : Key extends `value`
     ? T
     : Key extends `onChange`
-    ? VarEvent
+    ? OnChange
     : Key extends `_assertRW` | `_assertMiwiVar`
     ? true
     : Key extends keyof T
@@ -77,7 +77,7 @@ const Var = callable({
   call: <P extends VarPerms, T extends NotVar>(val: T) =>
     Var.fromFuncs<P, T>({
       read: () => val,
-      onChange: VarEvent(),
+      onChange: OnChange(),
       write: function (newVal: T) {
         // Ideally, we don't want to trigger the onChange event unless something has actually changed.
         if (newVal !== val) {
@@ -118,8 +118,8 @@ const Var = callable({
               } else {
                 // We store getters in a map to prevent having to recreate them every time
                 if (!Object.keys(_gettersMap).includes(propKey.toString())) {
-                  const onChange = VarEvent();
-                  let oldPropOnChange: VarEvent | undefined = undefined;
+                  const onChange = OnChange();
+                  let oldPropOnChange: OnChange | undefined = undefined;
                   const updateGetter = () => {
                     if (exists(oldPropOnChange)) {
                       oldPropOnChange.removeListener(onChange.trigger);
@@ -196,6 +196,10 @@ const Var = callable({
       call: <P extends VarPerms = RW>(
         ...cParams: Parameters<typeof ntParams.construct>
       ) => Var<P, T>(ntParams.construct(...cParams)),
+
+      /** @About Creates a Var from an inital value. */
+      lit: (...cParams: Parameters<typeof ntParams.construct>) =>
+        ntParams.construct(...cParams),
 
       /** @About Creates a Var from an inital value. */
       r: (...cParams: Parameters<typeof ntParams.construct>) =>
@@ -276,14 +280,14 @@ const doOnChange = <T extends NotVar>(
 
 /** @About An easy short hand to create a computed, read-only Var. */
 const computed = function <T extends NotVar>(
-  compute: () => T,
-  triggers: (VarOrLit<R, any> | VarEvent)[],
+  compute: () => VarOrLit<R, T>,
+  triggers: (VarOrLit<R, any> | OnChange)[],
 ): VarOrLit<R, T> {
-  const normalizedTriggers: VarEvent[] = triggers
+  const normalizedTriggers: OnChange[] = triggers
     // Convert vars to events
     .map((x) => (Var.isVar(x) ? x.onChange : x))
     // Ignore literals
-    .filter(VarEvent.isThisType);
+    .filter(OnChange.isThisType);
   // If there is nothing to react to, just return a literal
   if (normalizedTriggers.length === 0) {
     return compute();
@@ -291,13 +295,22 @@ const computed = function <T extends NotVar>(
     // Caching the computed value has significat performance benefits
     let cachedVal: T;
     let haveCachedVal = false;
-    const onChange = VarEvent();
+    const onChange = OnChange();
+    let oldPropOnChange: OnChange | undefined = undefined;
     const trypUpdateCachedVal = () => {
       const newVal = compute();
       // Ideally, we don't want to trigger the onChange event unless something has actually changed.
       if (!haveCachedVal || cachedVal !== newVal) {
-        cachedVal = newVal;
+        if (exists(oldPropOnChange)) {
+          oldPropOnChange.removeListener(onChange.trigger);
+          oldPropOnChange = undefined;
+        }
+        cachedVal = Var.toLit(newVal);
         haveCachedVal = true;
+        if (Var.isVar(newVal)) {
+          newVal.onChange.addListener(onChange.trigger);
+          oldPropOnChange = newVal.onChange;
+        }
         onChange.trigger();
       }
     };

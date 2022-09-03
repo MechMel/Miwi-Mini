@@ -11,8 +11,9 @@ const Str = Var.newType({
 const concat = (...args: VarOrLit<R, string | number | boolean>[]) =>
   computed(
     () =>
-      args.reduce((x, y) =>
-        Var.toLit(x).toString().concat(Var.toLit(y).toString()),
+      args.reduce(
+        (x, y) => Var.toLit(x).toString().concat(Var.toLit(y).toString()),
+        ``,
       ) as string,
     args,
   );
@@ -20,7 +21,7 @@ const concat = (...args: VarOrLit<R, string | number | boolean>[]) =>
 /** @About Pads the start of x with up to y z's. */
 const padStart = (
   x: VarOrLit<R, string | number>,
-  y: Num<R>,
+  y: Num,
   z: VarOrLit<R, string | number>,
 ) =>
   computed(
@@ -32,10 +33,21 @@ const padStart = (
 /** @About Pads the end of x with up to y z's. */
 const padEnd = (
   x: VarOrLit<R, string | number>,
-  y: Num<R>,
+  y: Num,
   z: VarOrLit<R, string | number>,
 ) =>
   computed(
     () => Var.toLit(x).toString().padEnd(Var.toLit(y), Var.toLit(z).toString()),
     [x, y, z],
+  );
+
+/** @About Pads the end of x with up to y z's. */
+const substr = (str: Str, start: Num, end?: Num) =>
+  computed(
+    () =>
+      Var.toLit(str).substring(
+        Var.toLit(start),
+        exists(end) ? Var.toLit(end) : undefined,
+      ),
+    [str, start, end],
   );

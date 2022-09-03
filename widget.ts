@@ -142,22 +142,28 @@ function createHtmlElement(params: {
 
   // Add children
   if (exists(params.content)) {
+    const oldTriggers = [];
     doOnChange(() => {
       while (htmlElement.firstChild) {
         htmlElement.removeChild(htmlElement.firstChild);
       }
       if (Var.toLit(List.is(params.content))) {
         const litList = Var.toLit(params.content as any);
-        (litList as VarOrLit<R, Node>[]).map((node) => {
+        (litList as VarOrLit<R, Node>[]).map((node, index) => {
           let litNode: Node | undefined = undefined;
           doOnChange(() => {
             // Find a more permanent way to stop watching when the content changes.
             if (Var.toLit(params.content as any) === litList) {
-              if (exists(litNode)) {
-                htmlElement.removeChild(litNode);
+              const newNode = Var.toLit(node);
+              if (exists(litNode) && litNode.parentNode === htmlElement) {
+                if (newNode !== litNode) {
+                  htmlElement.insertBefore(newNode, litNode);
+                  htmlElement.removeChild(litNode);
+                }
+              } else {
+                htmlElement.appendChild(newNode);
               }
-              litNode = Var.toLit(node);
-              htmlElement.appendChild(litNode);
+              litNode = newNode;
             }
           }, node);
         });
@@ -758,6 +764,7 @@ const numToFontSize = (num: Num) => numToStandardHtmlUnit(mul(0.825, num));
 // SECTION: Widget
 /** @About Widgets are the building blocks of UIs. */
 type WidgetLit = {
+  title: Str;
   width: Size;
   height: Size;
   cornerRadius: Num;
@@ -784,6 +791,7 @@ type WidgetLit = {
   readonly toString: () => string;
 };
 const _defaultWidget: WidgetLit = {
+  title: `Untitled`,
   width: Size.shrink,
   height: Size.shrink,
   onTap: undefined,
@@ -806,24 +814,41 @@ const _defaultWidget: WidgetLit = {
   contents: [],
   htmlTag: `div`,
 };
-type Widget<P extends VarPerms = R> = VarOrLit<P, WidgetLit>;
-const bdk: { a: number; b: boolean } | { a: string; b: string } = {
-  a: 0,
-  b: true,
+type WidgetConfig = Partial<OmitToNever<WidgetLit, `htmlTag` | `contents`>>;
+type WidgetParams<ExtraConfig extends { [key: string]: any } = {}> = Parameters<
+  (
+    options?: (Partial<ExtraConfig> & WidgetConfig) | WidgetContent,
+    ...contents: WidgetContent[]
+  ) => void
+>;
+const extractConfigAndContentsFromWidgetParams = <
+  ExtraConfig extends { [key: string]: any } = {},
+>(
+  params: WidgetParams<ExtraConfig>,
+): {
+  config: Partial<ExtraConfig> & WidgetConfig;
+  contents: WidgetContent[];
+} => {
+  let config: Partial<ExtraConfig> & WidgetConfig = {};
+  const contents = params as WidgetContent[];
+  if (!isContent(contents[0])) {
+    config = contents[0] as Partial<ExtraConfig> & WidgetConfig;
+    contents.splice(0, 1);
+  }
+  return { config, contents };
 };
+type Widget<P extends VarPerms = R> = VarOrLit<P, WidgetLit>;
 const Widget = Var.newType({
   is: (x) => exists(x?.htmlTag),
   construct: (
-    options?: _WidgetConstructorOptions,
-    ...contents: WidgetContent[]
+    template: WidgetLit = _defaultWidget,
+    ...widgetParams: WidgetParams
   ): WidgetLit => {
-    if (isContent(options)) {
-      contents.unshift(options);
-      options = {};
-    }
+    const { config, contents } =
+      extractConfigAndContentsFromWidgetParams(widgetParams);
     const newWidget: any = {};
-    for (const key in _defaultWidget) {
-      newWidget[key] = (options as any)?.[key] ?? (_defaultWidget as any)[key];
+    for (const key in template) {
+      newWidget[key] = (config as any)?.[key] ?? (template as any)[key];
     }
     // If no invocation contents are provided then we should use the default contents instead.
     if (contents.length > 0) {
@@ -837,64 +862,55 @@ const Widget = Var.newType({
     };
     return newWidget;
   },
-  template: (
-    options?: _WidgetConstructorOptions,
-    ...contents: WidgetContent[]
-  ) =>
-    callable({
-      call: (
-        options?: _WidgetConstructorOptions,
-        ...contents: WidgetContent[]
-      ) => Widget(options, contents),
-      ...Widget(options, contents).value,
-    }),
-  ..._defaultWidget,
+  template: <P1 extends [{ call: (...args: []) => WidgetLit }] | WidgetParams>(
+    ...templateParams: P1
+  ): P1 extends [{ call: Function }]
+    ? Callable<P1[0] & WidgetLit>
+    : Callable<
+        {
+          call: (...invokeParams: WidgetParams) => WidgetLit;
+          row: (...invokeParams: WidgetParams) => WidgetLit;
+          column: (...invokeParams: WidgetParams) => WidgetLit;
+        } & WidgetLit
+      > =>
+    exists((templateParams[0] as any)?.call)
+      ? (callable({
+          ...(templateParams as [any])[0],
+          ...(templateParams as [any])[0].call(),
+        }) as any)
+      : (callable({
+          call: (...invokeParams: WidgetParams) =>
+            Widget.lit(
+              Widget.lit(_defaultWidget, ...templateParams),
+              ...invokeParams,
+            ),
+          row: (...invokeParams: WidgetParams) =>
+            Widget.lit(
+              Widget.lit(Widget.lit(_defaultWidget, ...templateParams), {
+                contentAxis: Axis.horizontal,
+              }),
+              ...invokeParams,
+            ),
+          column: (...invokeParams: WidgetParams) =>
+            Widget.lit(
+              Widget.lit(Widget.lit(_defaultWidget, ...templateParams), {
+                contentAxis: Axis.vertical,
+              }),
+              ...invokeParams,
+            ),
+          /*stack: (...invokeParams: WidgetParams) =>
+            Widget.lit(
+              Widget.lit(Widget.lit(_defaultWidget, ...templateParams), {
+                contentAxis: Axis.vertical,
+              }),
+              ...invokeParams,
+            ),*/
+          ...Widget.lit(_defaultWidget, ...templateParams),
+        }) as any),
 });
-
-type _WidgetTemplate = WidgetLit & {
-  (
-    options?: _WidgetConstructorOptions,
-    ...contents: WidgetContent[]
-  ): WidgetLit;
-};
 type _WidgetConstructorOptions =
   | Partial<OmitToNever<WidgetLit, `htmlTag` | `contents`>>
   | WidgetContent;
-
-/** @About This is a shorthand for creating custom widgets */
-function widgetTemplate<T extends Required<Omit<WidgetLit, `toString`>>>(
-  defaultWidget: T,
-): _WidgetTemplate {
-  const build: any = function (
-    invocationOptions?: _WidgetConstructorOptions,
-    ...invocationContents: WidgetContent[]
-  ): Widget {
-    if (isContent(invocationOptions)) {
-      invocationContents.unshift(invocationOptions);
-      invocationOptions = {};
-    }
-    const newWidget: any = {};
-    for (const key in defaultWidget) {
-      newWidget[key] =
-        (invocationOptions as any)?.[key] ?? (defaultWidget as any)[key];
-    }
-    // If no invocation contents are provided then we should use the default contents instead.
-    if (invocationContents.length > 0) {
-      newWidget.contents = invocationContents;
-    }
-    newWidget.toString = function (): string {
-      // Maybe swap to <MiwiWidget>{...json}</MiwiWidget>
-      return `${_inlineContentOpenTag}${JSON.stringify(
-        newWidget,
-      )}${_inlineContentCloseTag}`;
-    };
-    return newWidget;
-  };
-  for (const key in defaultWidget) {
-    build[key] = defaultWidget[key];
-  }
-  return build as _WidgetTemplate;
-}
 
 //
 //
@@ -1073,92 +1089,34 @@ _addNewContentCompiler({
 //
 
 // SECTION: Compile Page
-const rootProjectPath = `./`;
-const rootOutputPath = `./website`;
-
 const _pageWidthVmin = 40;
-const _pageWidget = widgetTemplate({
-  width: `100%`,
-  height: `100%`,
-  onTap: undefined,
-  textSize: 2,
-  textIsBold: true,
-  textIsItalic: false,
-  textColor: Color.black,
-  cornerRadius: 0,
-  outlineColor: Color.transparent,
-  outlineSize: 0,
-  background: Color.almostWhite,
-  shadowSize: 0,
-  shadowDirection: Align.center,
-  padding: 0,
-  contentAlign: Align.topCenter,
-  contentAxis: Axis.vertical,
-  contentIsScrollableX: false,
-  contentIsScrollableY: false,
-  contentSpacing: 0,
-  contents: [],
-  htmlTag: `div`,
-});
-function _defaultPageParams() {
-  const params: any = {};
-  params.name = `Untitled`;
-  const defaultPageWidget = _pageWidget();
-  for (const key in defaultPageWidget) {
-    if (key !== `htmlTag` && key !== `contents`) {
-      params[key] = (defaultPageWidget as any)[key];
-    }
+
+const pageStack = (() => {
+  let _pageStack: WidgetLit[] = [];
+  const onChange = OnChange();
+  return List.fromFuncs<RW, WidgetLit>({
+    read: () => _pageStack,
+    write: (newStack: WidgetLit[]) => {
+      _pageStack = newStack;
+      onChange.trigger();
+    },
+    onChange: onChange,
+  });
+})();
+
+doOnChange(() => {
+  // Remove the old page
+  const oldPageElement = document.getElementById(`currentPage`);
+  if (exists(oldPageElement)) {
+    oldPageElement.parentElement?.removeChild(oldPageElement);
   }
-  return params as Partial<
-    Omit<
-      WidgetLit & {
-        name: string;
-      },
-      `toString` | `htmlTag` | `width` | `height` | `contents`
-    >
-  >;
-}
 
-/** @Note Describes a web page. */
-const openPage = function (
-  options = _defaultPageParams() as ReturnType<typeof _defaultPageParams>,
-  ...contents: WidgetContent[]
-) {
-  const currentPage = document.getElementById(`currentPage`);
-  if (!exists(currentPage)) {
-    // Normalize Params
-    if (isContent(options)) {
-      contents.unshift(options);
-      options = _defaultPageParams();
-    }
-
-    // Render page
-    const currentPage = compileContentsToHtml({
-      contents: _pageWidget(options, contents as WidgetContent),
-      parent: {
-        width: Size.shrink,
-        height: Size.shrink,
-        cornerRadius: 0,
-        outlineColor: Color.transparent,
-        outlineSize: 0,
-        background: Color.transparent,
-        shadowSize: 0,
-        shadowDirection: Align.center,
-        onTap: () => {},
-        padding: 0,
-        contentAlign: Align.center,
-        contentAxis: Axis.vertical,
-        contentIsScrollableX: false,
-        contentIsScrollableY: false,
-        contentSpacing: 0,
-        textSize: 1,
-        textIsBold: false,
-        textIsItalic: false,
-        textColor: Color.black,
-        contents: [],
-        htmlTag: `div`,
-        toString: () => ``,
-      },
+  // Load new page
+  const newPageWidget = Var.toLit(pageStack)[Var.toLit(pageStack).length - 1];
+  if (exists(newPageWidget)) {
+    const newPageElement = compileContentsToHtml({
+      contents: newPageWidget,
+      parent: Widget.lit(),
       startZIndex: 0,
     });
     doOnChange(() => {
@@ -1168,8 +1126,22 @@ const openPage = function (
       }
       document
         .getElementById(`pageParent`)
-        ?.appendChild(Var.toLit(currentPage.htmlElements[0]));
-    }, currentPage);
-    document.title = options.name!;
+        ?.appendChild(Var.toLit(List.get(newPageElement.htmlElements, 0)));
+    }, newPageElement);
+    document.title = Var.toLit(newPageWidget.title);
   }
-};
+}, pageStack);
+
+const currentPage = Widget.fromFuncs<RW>({
+  read: () =>
+    Var.toLit(pageStack)[Var.toLit(pageStack).length - 1] ?? Widget.lit(),
+  write: (w: WidgetLit) => List.push(pageStack, w),
+  onChange: pageStack.onChange,
+});
+
+/** @Note Opens the given page. */
+const openPage = (widget: WidgetLit = Widget.lit()) =>
+  (currentPage.value = widget);
+
+/** @Note Opens the given page. */
+const closePage = () => List.pop(pageStack);
