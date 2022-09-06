@@ -37,6 +37,7 @@ type VarPerms = R | RW;
 
 // TypeScript doesn't yet suport write only
 type VarFromFuncsParams<P extends VarPerms, T> = {
+  // Have these to return VarOrLits. We can wrap vars and adapt to changes.
   read(): T;
   // Maybe have >>> cleanUp(): void
   readonly onChange: OnChange;
@@ -64,8 +65,10 @@ type Var<P extends VarPerms, T extends NotVar> = {
     : Key extends `_assertRW` | `_assertMiwiVar`
     ? true
     : Key extends keyof T
-    ? T[Key] extends Function | undefined
-      ? T[Key]
+    ? T[Key] extends (...args: any) => any
+      ? T[Key] //(...args: Parameters<T[Key]>) => VarOrLit<R, Lit<ReturnType<T[Key]>>>
+      : T[Key] extends undefined
+      ? undefined
       : Var<
           GetVarPerms<T[Key]>,
           T[Key] extends VarOrLit<R, infer T2> ? T2 : T[Key] & NotVar
