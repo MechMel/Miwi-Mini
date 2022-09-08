@@ -42,7 +42,7 @@ const List = callable({
   concat: <T extends NotVar = NotVar>(
     x: List<R, VarOrLit<R, T>>,
     y: List<R, VarOrLit<R, T>>,
-  ) =>
+  ): List<R, VarOrLit<R, T>> =>
     computed(() => {
       const list = [];
       for (const i in Var.toLit(x)) list.push((x as any)[i]);

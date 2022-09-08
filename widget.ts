@@ -31,14 +31,12 @@ type _contentCompiler = {
     // We use "any" so that children can specify their own type
     contents: NotVar & any;
     parent: Lit<Widget>;
-    startZIndex: number;
   }) => _ContentCompilationResults;
 };
 type _ContentCompilationResults = {
   htmlElements: List<R, VarOrLit<R, Node>>;
   widthGrows: Bool;
   heightGrows: Bool;
-  greatestZIndex: Num;
 };
 const _contentCompilers: _contentCompiler[] = [];
 const _addNewContentCompiler = (newCompiler: _contentCompiler) =>
@@ -46,15 +44,13 @@ const _addNewContentCompiler = (newCompiler: _contentCompiler) =>
 const compileContentsToHtml = function (params: {
   contents: WidgetContent;
   parent: Widget;
-  startZIndex: number;
 }): VarOrLit<R, _ContentCompilationResults> {
   return computed(() => {
-    for (const i in _contentCompilers) {
-      if (_contentCompilers[i].isThisType(params.contents)) {
-        return _contentCompilers[i].compile({
+    for (const compiler of _contentCompilers) {
+      if (compiler.isThisType(params.contents)) {
+        return compiler.compile({
           contents: Var.toLit(params.contents),
           parent: Var.toLit(params.parent),
-          startZIndex: params.startZIndex,
         });
       }
     }
@@ -67,43 +63,31 @@ const compileContentsToHtml = function (params: {
 };
 _addNewContentCompiler({
   isThisType: (contents: WidgetContent) => Var.toLit(List.is(contents)),
-  compile: function (params: {
+  compile: (params: {
     contents: (Str | Bool | Num | Icon | Widget)[];
     parent: Lit<Widget>;
-    startZIndex: number;
-  }) {
-    // We'll split arrays into their individual elements and recurssively convert them to html.
-    const myInfo: _ContentCompilationResults = {
-      htmlElements: [],
-      widthGrows: false as Bool,
-      heightGrows: false as Bool,
-      greatestZIndex: params.startZIndex as number,
-    };
-    const htmlElementLists: List<R, VarOrLit<R, Node>>[] = [];
-    for (let i in params.contents) {
-      const thisWidgetInfo = compileContentsToHtml({
-        contents: params.contents[i],
-        parent: params.parent,
-        startZIndex:
-          Var.toLit(params.parent.contentAxis) === Axis.z
-            ? Var.toLit(myInfo.greatestZIndex) + 1
-            : params.startZIndex,
-      });
-      htmlElementLists.push(thisWidgetInfo.htmlElements);
-      myInfo.widthGrows = or(thisWidgetInfo.widthGrows, myInfo.widthGrows);
-      myInfo.heightGrows = or(thisWidgetInfo.heightGrows, myInfo.heightGrows);
-      myInfo.greatestZIndex = max(
-        myInfo.greatestZIndex,
-        thisWidgetInfo.greatestZIndex,
-      );
-    }
-    myInfo.htmlElements = htmlElementLists.reduce(
-      // Replace with List.concat()
-      (prev, curr) => List.concat(prev, curr),
-      List<R, Var<R, Node>>(),
-    );
-    return myInfo;
-  },
+  }) =>
+    params.contents.reduce(
+      (prev, cur) => {
+        const thisWidgetInfo = compileContentsToHtml({
+          contents: cur,
+          parent: params.parent,
+        });
+        return {
+          htmlElements: List.concat(
+            prev.htmlElements,
+            thisWidgetInfo.htmlElements,
+          ),
+          widthGrows: or(thisWidgetInfo.widthGrows, prev.widthGrows),
+          heightGrows: or(thisWidgetInfo.heightGrows, prev.heightGrows),
+        };
+      },
+      {
+        htmlElements: List<R, Var<R, Node>>(),
+        widthGrows: false,
+        heightGrows: false,
+      } as _ContentCompilationResults,
+    ),
 });
 
 /** @About Since we don't have access to JSX or React, we use this instead as a short hand
@@ -190,14 +174,8 @@ const widgetStyleBuilders: ((params: {
   widget: Widget;
   parent: Widget;
   childrenInfo: VarOrLit<R, _ContentCompilationResults>;
-  startZIndex: number;
 }) => _WidgetStylePart)[] = [];
-type _WidgetStylePart = {
-  scripts?: ((parent: HTMLElement) => void)[];
-  preferParent?: { [key: string]: _WidgetCompilerStyleProp };
-  preferChild?: { [key: string]: _WidgetCompilerStyleProp };
-};
-type _WidgetCompilerStyleProp = Str | Num | Bool;
+type _WidgetStylePart = { [key: string]: Str | Num | Bool };
 
 /** @About Converts a widget to an html element along with some other stats. */
 _addNewContentCompiler({
@@ -207,35 +185,23 @@ _addNewContentCompiler({
   compile: function (params: {
     contents: Lit<Widget>;
     parent: Lit<Widget>;
-    startZIndex: number;
   }): _ContentCompilationResults {
     // Compile the children
     const childrenInfo = compileContentsToHtml({
       contents: params.contents.contents as WidgetContent,
       parent: params.contents,
-      startZIndex: params.startZIndex,
     });
 
     // Compile the styles
-    //const shouldCreateChild = Var.toLit(params.contents.contentAxis) === Axis.z;
     const parentStyle: any = {};
-    const childStyle: any = {};
     for (const i in widgetStyleBuilders) {
       const newProps = widgetStyleBuilders[i]({
         widget: params.contents,
         parent: params.parent,
         childrenInfo: childrenInfo,
-        startZIndex: params.startZIndex,
       });
-      for (const key in newProps.preferParent) {
-        parentStyle[key] = newProps.preferParent[key];
-      }
-      for (const key in newProps.preferChild) {
-        /*if (shouldCreateChild) {
-          childStyle[key] = newProps.preferChild[key];
-        } else {*/
-        parentStyle[key] = newProps.preferChild[key];
-        /*}*/
+      for (const key in newProps) {
+        parentStyle[key] = newProps[key];
       }
     }
 
@@ -246,27 +212,12 @@ _addNewContentCompiler({
         params.contents.height,
         childrenInfo.heightGrows,
       ),
-      greatestZIndex: childrenInfo.greatestZIndex,
       htmlElements: [
         createHtmlElement({
           tag: Var.toLit(Var.toLit(params.contents).htmlTag),
           onClick: params.contents.onTap,
           style: parentStyle,
-          content:
-            /*shouldCreateChild
-            ? [
-                createHtmlElement({
-                  tag: `div`,
-                  style: {
-                    flexGrow: 1,
-                    alignSelf: `stretch`,
-                    backgroundColor: `green`,
-                    ...childStyle,
-                  },
-                  content: childrenInfo.htmlElements,
-                }),
-              ]
-            :*/ childrenInfo.htmlElements,
+          content: childrenInfo.htmlElements,
         }),
       ],
     };
@@ -326,42 +277,36 @@ widgetStyleBuilders.push(function (params: {
     params.childrenInfo.heightGrows,
   );
   return {
-    preferParent: {
-      display: `flex`,
-      boxSizing: `border-box`,
-      // Using minWidth and maxWidth tells css to not override the size of this element
-      width: exactWidth,
-      minWidth: exactWidth,
-      maxWidth: exactWidth,
-      height: exactHeight,
-      minHeight: exactHeight,
-      maxHeight: exactHeight,
-      flexGrow: ifel(
-        equ(params.parent.contentAxis, Axis.vertical),
-        ifel(
-          FlexSize.is(params.widget.height),
-          (params.widget.height as FlexSize).flex,
-          ifel(heightGrows, 1, ``),
-        ),
-        ifel(
-          FlexSize.is(params.widget.width),
-          (params.widget.width as FlexSize).flex,
-          ifel(widthGrows, 1, ``),
-        ),
+    display: `flex`,
+    boxSizing: `border-box`,
+    // Using minWidth and maxWidth tells css to not override the size of this element
+    width: exactWidth,
+    minWidth: exactWidth,
+    maxWidth: exactWidth,
+    height: exactHeight,
+    minHeight: exactHeight,
+    maxHeight: exactHeight,
+    flexGrow: ifel(
+      equ(params.parent.contentAxis, Axis.vertical),
+      ifel(
+        FlexSize.is(params.widget.height),
+        (params.widget.height as FlexSize).flex,
+        ifel(heightGrows, 1, ``),
       ),
-      alignSelf: ifel(
-        or(
-          and(equ(params.parent.contentAxis, Axis.horizontal), heightGrows),
-          and(equ(params.parent.contentAxis, Axis.vertical), widthGrows),
-        ),
-        `stretch`,
-        ``,
+      ifel(
+        FlexSize.is(params.widget.width),
+        (params.widget.width as FlexSize).flex,
+        ifel(widthGrows, 1, ``),
       ),
-    },
-    preferChild: {
-      display: `flex`,
-      boxSizing: `border-box`,
-    },
+    ),
+    alignSelf: ifel(
+      or(
+        and(equ(params.parent.contentAxis, Axis.horizontal), heightGrows),
+        and(equ(params.parent.contentAxis, Axis.vertical), widthGrows),
+      ),
+      `stretch`,
+      ``,
+    ),
   };
 });
 
@@ -438,50 +383,48 @@ const Material = Var.newType({
 widgetStyleBuilders.push((params: { widget: Widget }) => {
   const backgroundIsColor = Color.is(params.widget.background);
   return {
-    preferParent: {
-      // Corner Radius
-      borderRadius: numToStandardHtmlUnit(params.widget.cornerRadius),
+    // Corner Radius
+    borderRadius: numToStandardHtmlUnit(params.widget.cornerRadius),
 
-      // Outline
-      border: `none`,
-      outline: concat(
-        numToStandardHtmlUnit(params.widget.outlineSize),
-        ` solid `,
-        params.widget.outlineColor,
-      ),
+    // Outline
+    border: `none`,
+    outline: concat(
+      numToStandardHtmlUnit(params.widget.outlineSize),
+      ` solid `,
+      params.widget.outlineColor,
+    ),
 
-      outlineOffset: concat(
-        `-`,
-        numToStandardHtmlUnit(params.widget.outlineSize),
-      ),
+    outlineOffset: concat(
+      `-`,
+      numToStandardHtmlUnit(params.widget.outlineSize),
+    ),
 
-      // Background
-      backgroundColor: ifel(backgroundIsColor, params.widget.background, ``),
-      backgroundImage: ifel(
-        backgroundIsColor,
-        ``,
-        concat(`url(/images/`, params.widget.background, `)`),
-      ),
-      backgroundPosition: ifel(backgroundIsColor, ``, `center`),
-      backgroundSize: ifel(backgroundIsColor, ``, `cover`),
-      backgroundRepeat: `no-repeat`,
-      backgroundAttachment: `local`,
+    // Background
+    backgroundColor: ifel(backgroundIsColor, params.widget.background, ``),
+    backgroundImage: ifel(
+      backgroundIsColor,
+      ``,
+      concat(`url(/images/`, params.widget.background, `)`),
+    ),
+    backgroundPosition: ifel(backgroundIsColor, ``, `center`),
+    backgroundSize: ifel(backgroundIsColor, ``, `cover`),
+    backgroundRepeat: `no-repeat`,
+    backgroundAttachment: `local`,
 
-      // Shadow
-      boxShadow: concat(
-        numToStandardHtmlUnit(
-          mul(0.12, params.widget.shadowSize, params.widget.shadowDirection.x),
-        ),
-        ` `,
-        numToStandardHtmlUnit(
-          mul(-0.12, params.widget.shadowSize, params.widget.shadowDirection.y),
-        ),
-        ` `,
-        numToStandardHtmlUnit(mul(0.225, params.widget.shadowSize)),
-        ` 0 `,
-        Color.grey,
+    // Shadow
+    boxShadow: concat(
+      numToStandardHtmlUnit(
+        mul(0.12, params.widget.shadowSize, params.widget.shadowDirection.x),
       ),
-    },
+      ` `,
+      numToStandardHtmlUnit(
+        mul(-0.12, params.widget.shadowSize, params.widget.shadowDirection.y),
+      ),
+      ` `,
+      numToStandardHtmlUnit(mul(0.225, params.widget.shadowSize)),
+      ` 0 `,
+      Color.grey,
+    ),
   };
 });
 
@@ -493,13 +436,9 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
 
 // SECTION: Padding
 type Padding = number; //Num | [Num, Num] | [Num, Num, Num, Num];
-widgetStyleBuilders.push((params: { widget: Widget }) => {
-  return {
-    preferParent: {
-      padding: numToStandardHtmlUnit(params.widget.padding),
-    },
-  };
-});
+widgetStyleBuilders.push((params: { widget: Widget }) => ({
+  padding: numToStandardHtmlUnit(params.widget.padding),
+}));
 
 //
 //
@@ -527,91 +466,18 @@ widgetStyleBuilders.push(
     widget: Widget;
     parent: Widget;
     childrenInfo: _ContentCompilationResults;
-  }) => {
-    const parentIsZAxis = equ(params.parent.contentAxis, Axis.z);
-    const widgetIsZAxis = equ(params.widget.contentAxis, Axis.z);
-    const myPosition = ifel(parentIsZAxis, `absolute`, `relative`);
-    return {
-      preferParent: {
-        // Algin self when in a stack
-        position: myPosition,
-        margin: ifel(
-          parentIsZAxis,
-          concat(
-            ifel(equ(params.parent.contentAlign.x, 0), `auto`, 0),
-            ` `,
-            ifel(equ(params.parent.contentAlign.y, 0), `auto`, 0),
-          ),
-          0,
-        ),
-        left: ifel(
-          and(parentIsZAxis, equ(params.parent.contentAlign.x, -1)),
-          0,
-          ``,
-        ),
-        top: ifel(
-          and(parentIsZAxis, equ(params.parent.contentAlign.y, 1)),
-          0,
-          ``,
-        ),
-        right: ifel(
-          and(parentIsZAxis, equ(params.parent.contentAlign.x, 1)),
-          0,
-          ``,
-        ),
-        bottom: ifel(
-          and(parentIsZAxis, equ(params.parent.contentAlign.y, -1)),
-          0,
-          ``,
-        ),
+  }) => ({
+    // Algin self when in a stack
+    position: `relative`,
+    margin: 0,
 
-        // Content Alignment: https://css-tricks.com/snippets/css/a-guide-to-flexbox/
-        justifyContent:
-          // Exact spacing is handled through grid gap
-          ifel(
-            Num.is(params.widget.contentSpacing),
-            ifel(
-              equ(params.widget.contentAxis, Axis.vertical),
-              ifel(
-                equ(params.widget.contentAlign.y, 1),
-                `flex-start`,
-                ifel(
-                  equ(params.widget.contentAlign.y, 0),
-                  `safe center`,
-                  `flex-end`,
-                ),
-              ),
-              ifel(
-                equ(params.widget.contentAlign.x, -1),
-                `flex-start`,
-                ifel(
-                  equ(params.widget.contentAlign.x, 0),
-                  `safe center`,
-                  `flex-end`,
-                ),
-              ),
-            ),
-            // For whatever reason, space-between with one item puts it at the start instead of centering it.
-            ifel(
-              and(
-                equ(params.widget.contentSpacing, Spacing.spaceBetween),
-                equ(List.len(params.childrenInfo.htmlElements), 1),
-              ),
-              Spacing.spaceAround,
-              params.widget.contentSpacing,
-            ),
-          ),
-        alignItems: ifel(
+    // Content Alignment: https://css-tricks.com/snippets/css/a-guide-to-flexbox/
+    justifyContent:
+      // Exact spacing is handled through grid gap
+      ifel(
+        Num.is(params.widget.contentSpacing),
+        ifel(
           equ(params.widget.contentAxis, Axis.vertical),
-          ifel(
-            equ(params.widget.contentAlign.x, -1),
-            `flex-start`,
-            ifel(
-              equ(params.widget.contentAlign.x, 0),
-              `safe center`,
-              `flex-end`,
-            ),
-          ),
           ifel(
             equ(params.widget.contentAlign.y, 1),
             `flex-start`,
@@ -621,18 +487,45 @@ widgetStyleBuilders.push(
               `flex-end`,
             ),
           ),
+          ifel(
+            equ(params.widget.contentAlign.x, -1),
+            `flex-start`,
+            ifel(
+              equ(params.widget.contentAlign.x, 0),
+              `safe center`,
+              `flex-end`,
+            ),
+          ),
         ),
-        textAlign: ifel(
-          equ(params.widget.contentAlign.x, -1),
-          `left`,
-          ifel(equ(params.widget.contentAlign.x, 0), `center`, `right`),
+        // For whatever reason, space-between with one item puts it at the start instead of centering it.
+        ifel(
+          and(
+            equ(params.widget.contentSpacing, Spacing.spaceBetween),
+            equ(List.len(params.childrenInfo.htmlElements), 1),
+          ),
+          Spacing.spaceAround,
+          params.widget.contentSpacing,
         ),
-      },
-      preferChild: {
-        position: ifel(widgetIsZAxis, `relative`, myPosition),
-      },
-    };
-  },
+      ),
+    alignItems: ifel(
+      equ(params.widget.contentAxis, Axis.vertical),
+      ifel(
+        equ(params.widget.contentAlign.x, -1),
+        `flex-start`,
+        ifel(equ(params.widget.contentAlign.x, 0), `safe center`, `flex-end`),
+      ),
+      ifel(
+        equ(params.widget.contentAlign.y, 1),
+        `flex-start`,
+        ifel(equ(params.widget.contentAlign.y, 0), `safe center`, `flex-end`),
+      ),
+    ),
+    textAlign: ifel(
+      equ(params.widget.contentAlign.x, -1),
+      `left`,
+      ifel(equ(params.widget.contentAlign.x, 0), `center`, `right`),
+    ),
+  }),
 );
 
 //
@@ -645,7 +538,6 @@ widgetStyleBuilders.push(
 const _axisOptions = readonlyObj({
   horizontal: `horizontal`,
   vertical: `vertical`,
-  z: `z`,
 } as const);
 type Axis<P extends VarPerms = R> = Type<P, typeof Axis>;
 const Axis = Var.newType({
@@ -654,18 +546,13 @@ const Axis = Var.newType({
   toString: () => `vertical`,
   ..._axisOptions,
 });
-widgetStyleBuilders.push((params: { widget: Widget; startZIndex: number }) => {
-  return {
-    preferParent: {
-      flexDirection: ifel(
-        equ(params.widget.contentAxis, Axis.vertical),
-        `column`,
-        `row`,
-      ),
-      zIndex: params.startZIndex,
-    },
-  };
-});
+widgetStyleBuilders.push((params: { widget: Widget }) => ({
+  flexDirection: ifel(
+    equ(params.widget.contentAxis, Axis.vertical),
+    `column`,
+    `row`,
+  ),
+}));
 
 //
 //
@@ -674,24 +561,20 @@ widgetStyleBuilders.push((params: { widget: Widget; startZIndex: number }) => {
 //
 
 // SECTION: Content Is Scrollable
-widgetStyleBuilders.push((params: { widget: Widget }) => {
-  return {
-    preferParent: {
-      overflowX: ifel(
-        params.widget.contentIsScrollableX,
-        `overlay`, // Scroll when nesscary, and float above contents
-        ``, //`hidden`,
-      ),
-      overflowY: ifel(
-        params.widget.contentIsScrollableY,
-        `auto`, // Scroll when nesscary, and float above contents
-        ``, //`hidden`,
-      ),
-      scrollbarWidth: `thin`,
-      scrollbarColor: `#e3e3e3 transparent`,
-    },
-  };
-});
+widgetStyleBuilders.push((params: { widget: Widget }) => ({
+  overflowX: ifel(
+    params.widget.contentIsScrollableX,
+    `overlay`, // Scroll when nesscary, and float above contents
+    ``, //`hidden`,
+  ),
+  overflowY: ifel(
+    params.widget.contentIsScrollableY,
+    `auto`, // Scroll when nesscary, and float above contents
+    ``, //`hidden`,
+  ),
+  scrollbarWidth: `thin`,
+  scrollbarColor: `#e3e3e3 transparent`,
+}));
 
 //
 //
@@ -712,22 +595,18 @@ const Spacing = Var.newType({
   construct: (v: number | Values<typeof _spacingOptions>) => v,
   ..._spacingOptions,
 });
-widgetStyleBuilders.push((params: { widget: Widget }) => {
-  return {
-    preferChild: {
-      rowGap:
-        params.widget.contentAxis === Axis.vertical &&
-        typeof params.widget.contentSpacing === `number`
-          ? old_numToStandardHtmlUnit(params.widget.contentSpacing)
-          : ``,
-      columnGap:
-        params.widget.contentAxis === Axis.horizontal &&
-        typeof params.widget.contentSpacing === `number`
-          ? old_numToStandardHtmlUnit(params.widget.contentSpacing)
-          : ``,
-    },
-  };
-});
+widgetStyleBuilders.push((params: { widget: Widget }) => ({
+  rowGap:
+    params.widget.contentAxis === Axis.vertical &&
+    typeof params.widget.contentSpacing === `number`
+      ? old_numToStandardHtmlUnit(params.widget.contentSpacing)
+      : ``,
+  columnGap:
+    params.widget.contentAxis === Axis.horizontal &&
+    typeof params.widget.contentSpacing === `number`
+      ? old_numToStandardHtmlUnit(params.widget.contentSpacing)
+      : ``,
+}));
 
 //
 //
@@ -738,20 +617,13 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
 // SECTION: Text Style
 // TODO: Change textColor to textMaterial. Then use text to mask a backdrop for gradiants or images.
 // Also, have mask be a valid material so that the same back drop can be used for several different elements.
-widgetStyleBuilders.push((params: { widget: Widget }) => {
-  return {
-    preferParent: {
-      fontFamily: `Roboto`,
-    },
-    preferChild: {
-      fontFamily: `Roboto`,
-      fontSize: numToFontSize(params.widget.textSize),
-      fontWeight: params.widget.textIsBold ? `bold` : ``,
-      fontStyle: params.widget.textIsItalic ? `italic` : ``,
-      color: params.widget.textColor,
-    },
-  };
-});
+widgetStyleBuilders.push((params: { widget: Widget }) => ({
+  fontFamily: `Roboto`,
+  fontSize: numToFontSize(params.widget.textSize),
+  fontWeight: params.widget.textIsBold ? `bold` : ``,
+  fontStyle: params.widget.textIsItalic ? `italic` : ``,
+  color: params.widget.textColor,
+}));
 
 const numToFontSize = (num: Num) => numToStandardHtmlUnit(mul(0.825, num));
 
@@ -930,7 +802,6 @@ _addNewContentCompiler({
   compile: function (params: {
     contents: Lit<Icon>;
     parent: Lit<Widget>;
-    startZIndex: number;
   }): _ContentCompilationResults {
     const textNode = document.createTextNode(``);
     doOnChange(
@@ -957,7 +828,6 @@ _addNewContentCompiler({
       ],
       widthGrows: false,
       heightGrows: false,
-      greatestZIndex: params.startZIndex,
     };
   },
 });
@@ -977,110 +847,34 @@ _addNewContentCompiler({
     Var.toLit(Str.is(contents)) ||
     Var.toLit(Num.is(contents)) ||
     Var.toLit(Bool.is(contents)),
-  compile: function (params: {
+  compile: (params: {
     contents: string | number | boolean;
     parent: Lit<Widget>;
-    startZIndex: number;
-  }): _ContentCompilationResults {
-    const paragraphParts: VarOrLit<R, Node>[] = [];
-    let greatestZIndex = params.startZIndex;
-    /*if (typeof params.contents === `string`) {
-      const contentsAsString = params.contents;
-      let openTagIndex = contentsAsString.indexOf(_inlineContentOpenTag);
-      let closeTagIndex = 0 - _inlineContentCloseTag.length;
-      while (openTagIndex >= 0) {
-        // Read in any trailing text
-        if (openTagIndex - closeTagIndex + _inlineContentCloseTag.length > 0) {
-          paragraphParts.push(
-            document.createTextNode(
-              contentsAsString.substring(
-                closeTagIndex + _inlineContentCloseTag.length,
-                openTagIndex,
-              ),
-            ),
-          );
-        }
-        closeTagIndex =
-          openTagIndex +
-          contentsAsString
-            .substring(openTagIndex)
-            .indexOf(_inlineContentCloseTag);
-        const embededContentInfo = compileContentsToHtml({
-          contents: JSON.parse(
-            contentsAsString.substring(
-              openTagIndex + _inlineContentOpenTag.length,
-              closeTagIndex,
-            ),
-          ) as Widget,
-          parent: params.parent,
-          startZIndex: params.startZIndex,
-        });
-        greatestZIndex = Math.max(
-          greatestZIndex,
-          embededContentInfo.greatestZIndex,
-        );
-        for (const i in embededContentInfo.htmlElements) {
-          paragraphParts.push(embededContentInfo.htmlElements[i]);
-        }
-        openTagIndex = contentsAsString
-          .substring(closeTagIndex)
-          .indexOf(_inlineContentOpenTag);
-        if (openTagIndex >= 0) {
-          openTagIndex += closeTagIndex;
-        }
-      }
-      if (
-        closeTagIndex + _inlineContentCloseTag.length <
-        contentsAsString.length
-      ) {
-        paragraphParts.push(
-          document.createTextNode(
-            contentsAsString.substring(
-              closeTagIndex + _inlineContentCloseTag.length,
-              contentsAsString.length,
-            ),
-          ),
-        );
-      }
-    } else {*/
-    paragraphParts.push(document.createTextNode(params.contents.toString()));
-    //const textNode = document.createTextNode(params.contents.toString());
-    //doOnChange((x) => (textNode.nodeValue = x.toString()), params.contents);
-    /*paragraphParts.push(
-      computed(
-        () => document.createTextNode(params.contents.toString()),
-        [params.contents],
-      ),
-    );*/
-    //}
-
-    const htmlElement = createHtmlElement({
-      tag: `p`,
-      style: {
-        color: params.parent.textColor,
-        fontFamily: `Roboto`,
-        fontSize: numToFontSize(params.parent.textSize),
-        fontWeight: ifel(params.parent.textIsBold, `bold`, ``),
-        fontStyle: ifel(params.parent.textIsItalic, `italic`, ``),
-        textAlign:
-          params.parent.contentAlign.x === -1
-            ? `left`
-            : params.parent.contentAlign.x === 0
-            ? `center`
-            : `right`,
-        margin: 0,
-        padding: 0,
-        zIndex: params.startZIndex,
-      },
-      content: paragraphParts,
-    });
-    return {
-      widthGrows: false,
-      heightGrows: false,
-      greatestZIndex: params.startZIndex,
-      htmlElements: [htmlElement],
-    };
-  },
+  }) => ({
+    widthGrows: false,
+    heightGrows: false,
+    htmlElements: [
+      createHtmlElement({
+        tag: `p`,
+        style: {
+          color: params.parent.textColor,
+          fontFamily: `Roboto`,
+          fontSize: numToFontSize(params.parent.textSize),
+          fontWeight: ifel(params.parent.textIsBold, `bold`, ``),
+          fontStyle: ifel(params.parent.textIsItalic, `italic`, ``),
+          textAlign:
+            params.parent.contentAlign.x === -1
+              ? `left`
+              : params.parent.contentAlign.x === 0
+              ? `center`
+              : `right`,
+          margin: 0,
+          padding: 0,
+        },
+        content: document.createTextNode(params.contents.toString()),
+      }),
+    ],
+  }),
 });
 
 //
@@ -1108,7 +902,6 @@ doOnChange(() => {
     const newPageElement = compileContentsToHtml({
       contents: newPageWidget,
       parent: Widget.lit(),
-      startZIndex: 0,
     });
     doOnChange(() => {
       const pageParentElement = document.getElementById(`pageParent`);
@@ -1136,5 +929,5 @@ const currentPage = Widget.fromFuncs<RW>({
 const openPage = (widget: WidgetLit = Widget.lit()) =>
   (currentPage.value = widget);
 
-/** @Note Opens the given page. */
+/** @Note Closes the current page and opens the previous one. Note, this will not close the first page. */
 const closePage = () => List.pop(pageStack);
