@@ -54,6 +54,7 @@ const compileContentsToHtml = function (params: {
         });
       }
     }
+    console.log(params.contents.value);
     throw `Encountered an error in "miwi/widget.ts.compileContentsToHtml". Could not find a content compiler for ${JSON.stringify(
       params.contents,
       null,
@@ -61,6 +62,14 @@ const compileContentsToHtml = function (params: {
     )}`;
   }, [params.contents, params.parent]);
 };
+_addNewContentCompiler({
+  isThisType: (x) => x === undefined || x === null,
+  compile: () => ({
+    htmlElements: [],
+    widthGrows: false,
+    heightGrows: false,
+  }),
+});
 _addNewContentCompiler({
   isThisType: (contents: WidgetContent) => Var.toLit(List.is(contents)),
   compile: (params: {
@@ -310,10 +319,9 @@ widgetStyleBuilders.push(function (params: {
   };
 });
 
-const old_numToStandardHtmlUnit = (num: Num) =>
-  `${mul(num, div(_pageWidthVmin, 24))}vmin`;
 const numToStandardHtmlUnit = (num: Num) =>
-  computed(() => `${mul(num, div(_pageWidthVmin, 24))}vmin`, [num]);
+  //computed(() => `${mul(num, div(_pageWidthVmin/* 40 */, 24))}vmin`, [num]);
+  computed(() => `${mul(num, 1 / fontSizeToHtmlUnit)}rem`, [num]);
 
 //
 //
@@ -596,16 +604,22 @@ const Spacing = Var.newType({
   ..._spacingOptions,
 });
 widgetStyleBuilders.push((params: { widget: Widget }) => ({
-  rowGap:
-    params.widget.contentAxis === Axis.vertical &&
-    typeof params.widget.contentSpacing === `number`
-      ? old_numToStandardHtmlUnit(params.widget.contentSpacing)
-      : ``,
-  columnGap:
-    params.widget.contentAxis === Axis.horizontal &&
-    typeof params.widget.contentSpacing === `number`
-      ? old_numToStandardHtmlUnit(params.widget.contentSpacing)
-      : ``,
+  rowGap: ifel(
+    and(
+      equ(params.widget.contentAxis, Axis.vertical),
+      Num.is(params.widget.contentSpacing),
+    ),
+    numToStandardHtmlUnit(params.widget.contentSpacing as Num),
+    ``,
+  ),
+  columnGap: ifel(
+    and(
+      equ(params.widget.contentAxis, Axis.horizontal),
+      Num.is(params.widget.contentSpacing),
+    ),
+    numToStandardHtmlUnit(params.widget.contentSpacing as Num),
+    ``,
+  ),
 }));
 
 //
@@ -625,7 +639,9 @@ widgetStyleBuilders.push((params: { widget: Widget }) => ({
   color: params.widget.textColor,
 }));
 
-const numToFontSize = (num: Num) => numToStandardHtmlUnit(mul(0.825, num));
+const fontSizeToHtmlUnit = 0.825;
+const numToFontSize = (num: Num) =>
+  numToStandardHtmlUnit(mul(fontSizeToHtmlUnit, num));
 
 //
 //
@@ -639,7 +655,7 @@ type WidgetLit = {
   title: Str;
   width: Size;
   height: Size;
-  cornerRadius: Num;
+  cornerRadius: Num; // | [Num, Num, Num, Num];
   outlineColor: Color;
   outlineSize: Num;
   background: Material;
@@ -884,50 +900,40 @@ _addNewContentCompiler({
 //
 
 // SECTION: Compile Page
-const _pageWidthVmin = 40;
 const pageStack = List<RW, Widget>();
 
-doOnChange(() => {
-  // Remove the old page
-  const oldPageElement = document.getElementById(`currentPage`);
-  if (exists(oldPageElement)) {
-    oldPageElement.parentElement?.removeChild(oldPageElement);
-  }
-
-  // Load new page
-  const newPageWidget = Var.toLit(
-    Var.toLit(pageStack)[Var.toLit(pageStack).length - 1],
-  );
-  if (exists(newPageWidget)) {
-    const newPageElement = compileContentsToHtml({
-      contents: newPageWidget,
-      parent: Widget.lit(),
-    });
-    doOnChange(() => {
-      const pageParentElement = document.getElementById(`pageParent`);
-      while (pageParentElement?.firstChild) {
-        pageParentElement?.removeChild(pageParentElement?.firstChild);
-      }
-      document
-        .getElementById(`pageParent`)
-        ?.appendChild(Var.toLit(List.get(newPageElement.htmlElements, 0)));
-    }, newPageElement);
-    document.title = Var.toLit(newPageWidget.title);
-  }
-}, pageStack);
-
-const currentPage = Widget.fromFuncs<RW>({
-  read: () =>
-    Var.toLit(
-      Var.toLit(pageStack)[Var.toLit(pageStack).length - 1] ?? Widget.lit(),
-    ),
-  write: (w: WidgetLit) => List.push(pageStack, w),
-  onChange: pageStack.onChange,
-});
+// Provides an easy reffrence to the current page
+const currentPage = computed(
+  () => Var.toLit(List.last(pageStack)) ?? Widget.lit(),
+  [pageStack],
+);
 
 /** @Note Opens the given page. */
-const openPage = (widget: WidgetLit = Widget.lit()) =>
-  (currentPage.value = widget);
+const openPage = (w: WidgetLit = Widget.lit()) => List.push(pageStack, w);
 
 /** @Note Closes the current page and opens the previous one. Note, this will not close the first page. */
 const closePage = () => List.pop(pageStack);
+
+// Set up page rendering reativity
+// Using a function allows us to keep variables private
+(() => {
+  const pageParentElement = document.getElementById(`pageParent`)!;
+  const pageElement = compileContentsToHtml({
+    contents: currentPage,
+    parent: Widget.lit(),
+  });
+
+  // Redraw the page on changes
+  doOnChange(() => {
+    // Remove the old page
+    pageParentElement.innerHTML = ``;
+    pageParentElement.appendChild(
+      Var.toLit(List.get(pageElement.htmlElements, 0)),
+    );
+  }, pageElement);
+
+  // Update the document title
+  doOnChange(() => {
+    document.title = Var.toLit(currentPage.title);
+  }, currentPage.title);
+})();

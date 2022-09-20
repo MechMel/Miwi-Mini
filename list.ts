@@ -22,7 +22,16 @@ const List = callable({
   get: <T extends NotVar = NotVar>(
     list: List<R, VarOrLit<R, T>>,
     i: VarOrLit<R, number>,
-  ) => computed(() => (list as any)[Var.toLit(i)], [list, i]),
+  ) => computed(() => (list as any)[Var.toLit(i)] as VarOrLit<R, T>, [list, i]),
+
+  first: <T extends NotVar = NotVar>(list: List<R, VarOrLit<R, T>>) =>
+    computed(() => (list as any)[0] as VarOrLit<R, T>, [list]),
+
+  last: <T extends NotVar = NotVar>(list: List<R, VarOrLit<R, T>>) =>
+    computed(
+      () => (list as any)[Var.toLit(List.len(list)) - 1] as VarOrLit<R, T>,
+      [list],
+    ),
 
   push: <T extends NotVar = NotVar>(
     list: List<RW, VarOrLit<R, T>>,
