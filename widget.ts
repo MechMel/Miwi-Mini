@@ -1,3 +1,8 @@
+const isDebugMode = true;
+const isDesktopView = Bool<RW>(true);
+const debugViewportWidth = ifel(isDesktopView, 75, 40);
+const debugViewportHeight = ifel(isDesktopView, 40, 75);
+
 //
 //
 //
@@ -321,7 +326,18 @@ widgetStyleBuilders.push(function (params: {
 
 const numToStandardHtmlUnit = (num: Num) =>
   //computed(() => `${mul(num, div(_pageWidthVmin/* 40 */, 24))}vmin`, [num]);
-  computed(() => `${mul(num, 1 / fontSizeToHtmlUnit)}rem`, [num]);
+  computed(
+    () =>
+      ifel(
+        isDebugMode,
+        concat(
+          mul(num, div(debugViewportWidth, ifel(isDesktopView, 72, 24))),
+          `vmin`,
+        ),
+        concat(mul(num, 1 / fontSizeToHtmlUnit), `rem`),
+      ),
+    [num],
+  );
 
 //
 //
@@ -435,7 +451,11 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
   const backgroundIsColor = Color.is(params.widget.background);
   return {
     // Corner Radius
-    borderRadius: numToStandardHtmlUnit(params.widget.cornerRadius),
+    borderRadius: ifel(
+      Num.is(params.widget.cornerRadius),
+      numToStandardHtmlUnit(params.widget.cornerRadius as Num),
+      params.widget.cornerRadius,
+    ),
 
     // Outline
     border: concat(`solid `, params.widget.outlineColor),
@@ -504,7 +524,11 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
 // SECTION: Padding
 type Padding = number; //Num | [Num, Num] | [Num, Num, Num, Num];
 widgetStyleBuilders.push((params: { widget: Widget }) => ({
-  padding: numToStandardHtmlUnit(params.widget.padding),
+  padding: ifel(
+    Num.is(params.widget.padding),
+    numToStandardHtmlUnit(params.widget.padding as Num),
+    params.widget.padding,
+  ),
 }));
 
 //
@@ -692,7 +716,11 @@ widgetStyleBuilders.push((params: { widget: Widget }) => ({
 // Also, have mask be a valid material so that the same back drop can be used for several different elements.
 widgetStyleBuilders.push((params: { widget: Widget }) => ({
   fontFamily: `Roboto`,
-  fontSize: numToFontSize(params.widget.textSize),
+  fontSize: ifel(
+    Num.is(params.widget.textSize),
+    numToFontSize(params.widget.textSize as Num),
+    params.widget.textSize as Str,
+  ),
   fontWeight: params.widget.textIsBold ? `bold` : ``,
   fontStyle: params.widget.textIsItalic ? `italic` : ``,
   textDecoration: ifel(params.widget.textIsUnderlined, `underline`, ``),
@@ -716,7 +744,7 @@ type WidgetLit = {
   title: Str;
   width: Size;
   height: Size;
-  cornerRadius: Num; // | [Num, Num, Num, Num];
+  cornerRadius: Num | Str; // | [Num, Num, Num, Num];
   outlineColor: Color;
   outlineSize: Num | OutlineSize;
   background: Material;
@@ -724,14 +752,14 @@ type WidgetLit = {
   shadowDirection: Align;
   onTap: (() => void) | undefined;
   //interaction: { onTap: function() {}, onDoubleTap: function() {}, onLongPress: function() {}, }
-  padding: Num;
+  padding: Num | Str;
   contentAlign: Align;
   contentAxis: Axis;
   contentIsScrollableX: Bool;
   contentIsScrollableY: Bool;
   contentSpacing: Spacing;
   // contentStyle: style.deferToParent,
-  textSize: Num;
+  textSize: Num | Str;
   textIsBold: Bool;
   textIsItalic: Bool;
   textIsUnderlined: Bool;
@@ -894,13 +922,25 @@ _addNewContentCompiler({
           class: `material-symbols-outlined`,
           style: {
             cursor: `default`,
-            width: numToIconSize(params.parent.textSize),
-            height: numToIconSize(params.parent.textSize),
+            width: ifel(
+              Num.is(params.parent.textSize),
+              numToIconSize(params.parent.textSize as Num),
+              params.parent.textSize as Str,
+            ),
+            height: ifel(
+              Num.is(params.parent.textSize),
+              numToIconSize(params.parent.textSize as Num),
+              params.parent.textSize as Str,
+            ),
             color: params.parent.textColor,
             display: `inline-block`,
             verticalAlign: `middle`,
             textAlign: `center`,
-            fontSize: numToIconSize(params.parent.textSize),
+            fontSize: ifel(
+              Num.is(params.parent.textSize),
+              numToIconSize(params.parent.textSize as Num),
+              params.parent.textSize as Str,
+            ),
           },
           content: textNode,
         }),
@@ -938,7 +978,11 @@ _addNewContentCompiler({
         style: {
           color: params.parent.textColor,
           fontFamily: `Roboto`,
-          fontSize: numToFontSize(params.parent.textSize),
+          fontSize: ifel(
+            Num.is(params.parent.textSize),
+            numToFontSize(params.parent.textSize as Num),
+            params.parent.textSize as Str,
+          ),
           fontWeight: ifel(params.parent.textIsBold, `bold`, ``),
           fontStyle: ifel(params.parent.textIsItalic, `italic`, ``),
           textAlign:
@@ -982,7 +1026,56 @@ const closePage = () => List.pop(pageStack);
 (() => {
   const pageParentElement = document.getElementById(`pageParent`)!;
   const pageElement = compileContentsToHtml({
-    contents: currentPage,
+    contents: isDebugMode
+      ? Widget.lit(_defaultWidget, {
+          width: Size.grow,
+          height: Size.grow,
+          contentSpacing: Spacing.spaceBetween,
+          contents: [
+            Widget.lit(_defaultWidget, {
+              width: Size.grow,
+              height: `5vmin`,
+              contentAxis: Axis.horizontal,
+              contentAlign: Align.topLeft,
+              padding: concat(mul(1, 1 / fontSizeToHtmlUnit), `rem`),
+              contentSpacing: 0,
+              contents: [
+                Widget.lit(_defaultWidget, {
+                  textSize: concat(mul(2, 1 / fontSizeToHtmlUnit), `rem`),
+                  textColor: ifel(isDesktopView, Color.blue, Color.black),
+                  onTap: () => (isDesktopView.value = true),
+                  contents: Icon.monitor,
+                }),
+                Widget.lit(_defaultWidget, {
+                  width: concat(mul(1, 1 / fontSizeToHtmlUnit), `rem`),
+                }),
+                Widget.lit(_defaultWidget, {
+                  textSize: concat(mul(2, 1 / fontSizeToHtmlUnit), `rem`),
+                  textColor: ifel(isDesktopView, Color.black, Color.blue),
+                  onTap: () => (isDesktopView.value = false),
+                  contents: Icon.phone_android,
+                }),
+              ],
+            }),
+            Widget.lit(_defaultWidget, {
+              width: concat(add(debugViewportWidth, 4), `vmin`),
+              height: concat(add(debugViewportHeight, 4), `vmin`),
+              cornerRadius: `1.66667vmin`,
+              background: Color.black,
+              contents: Widget.lit(_defaultWidget, {
+                width: concat(debugViewportWidth, `vmin`),
+                height: concat(debugViewportHeight, `vmin`),
+                contents: currentPage,
+              }),
+            }),
+            Widget.lit(_defaultWidget, {
+              width: Size.grow,
+              height: `5vmin`,
+              contents: [],
+            }),
+          ],
+        })
+      : currentPage,
     parent: Widget.lit(),
   });
 
