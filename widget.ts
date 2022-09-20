@@ -388,6 +388,49 @@ const Material = Var.newType({
   is: (v) => Var.toLit(Color.is(v)) || Var.toLit(ImageRef.is(v)),
   construct: (v: Lit<Color> | Lit<ImageRef>) => v,
 });
+
+/** @Note Allows for uniquely styling individual sides of a box. */
+type OutlineSize<P extends VarPerms = R> = Type<P, typeof OutlineSize>;
+const OutlineSize = Var.newType({
+  is: (v) =>
+    exists(v.left) &&
+    Var.toLit(Num.is(v.left)) &&
+    exists(v.top) &&
+    Var.toLit(Num.is(v.top)) &&
+    exists(v.right) &&
+    Var.toLit(Num.is(v.right)) &&
+    exists(v.bottom) &&
+    Var.toLit(Num.is(v.bottom)),
+  construct: (allSides: Num) => ({
+    left: allSides,
+    top: allSides,
+    right: allSides,
+    bottom: allSides,
+  }),
+  only: ({
+    left = 0 as Num,
+    top = 0 as Num,
+    right = 0 as Num,
+    bottom = 0 as Num,
+  }) => ({
+    left: left,
+    top: top,
+    right: right,
+    bottom: bottom,
+  }),
+  symmetric: ({ horizontal = 0 as Num, vertical = 0 as Num }) => ({
+    left: vertical,
+    top: horizontal,
+    right: vertical,
+    bottom: horizontal,
+  }),
+  all: (allSides: Num) => ({
+    left: allSides,
+    top: allSides,
+    right: allSides,
+    bottom: allSides,
+  }),
+});
 widgetStyleBuilders.push((params: { widget: Widget }) => {
   const backgroundIsColor = Color.is(params.widget.background);
   return {
@@ -395,8 +438,24 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
     borderRadius: numToStandardHtmlUnit(params.widget.cornerRadius),
 
     // Outline
-    border: `none`,
-    outline: concat(
+    border: concat(`solid `, params.widget.outlineColor),
+    borderWidth: ifel(
+      Num.is(params.widget.outlineSize),
+      numToStandardHtmlUnit(params.widget.outlineSize as Num),
+      concat(
+        numToStandardHtmlUnit((params.widget.outlineSize as OutlineSize).top),
+        ` `,
+        numToStandardHtmlUnit((params.widget.outlineSize as OutlineSize).right),
+        ` `,
+        numToStandardHtmlUnit(
+          (params.widget.outlineSize as OutlineSize).bottom,
+        ),
+        ` `,
+        numToStandardHtmlUnit((params.widget.outlineSize as OutlineSize).left),
+      ),
+    ),
+    outline: `none`,
+    /*outline: concat(
       numToStandardHtmlUnit(params.widget.outlineSize),
       ` solid `,
       params.widget.outlineColor,
@@ -405,7 +464,7 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
     outlineOffset: concat(
       `-`,
       numToStandardHtmlUnit(params.widget.outlineSize),
-    ),
+    ),*/
 
     // Background
     backgroundColor: ifel(backgroundIsColor, params.widget.background, ``),
@@ -636,9 +695,11 @@ widgetStyleBuilders.push((params: { widget: Widget }) => ({
   fontSize: numToFontSize(params.widget.textSize),
   fontWeight: params.widget.textIsBold ? `bold` : ``,
   fontStyle: params.widget.textIsItalic ? `italic` : ``,
+  textDecoration: ifel(params.widget.textIsUnderlined, `underline`, ``),
   color: params.widget.textColor,
 }));
 
+const textColorBody = Color<RW>(`#333333`);
 const fontSizeToHtmlUnit = 0.825;
 const numToFontSize = (num: Num) =>
   numToStandardHtmlUnit(mul(fontSizeToHtmlUnit, num));
@@ -657,7 +718,7 @@ type WidgetLit = {
   height: Size;
   cornerRadius: Num; // | [Num, Num, Num, Num];
   outlineColor: Color;
-  outlineSize: Num;
+  outlineSize: Num | OutlineSize;
   background: Material;
   shadowSize: Num;
   shadowDirection: Align;
@@ -673,6 +734,7 @@ type WidgetLit = {
   textSize: Num;
   textIsBold: Bool;
   textIsItalic: Bool;
+  textIsUnderlined: Bool;
   textColor: Color;
   contents: WidgetContent;
   readonly htmlTag: string;
@@ -698,7 +760,8 @@ const _defaultWidget: WidgetLit = {
   textSize: 1,
   textIsBold: false,
   textIsItalic: false,
-  textColor: Color.black,
+  textIsUnderlined: false,
+  textColor: textColorBody,
   contents: [],
   htmlTag: `div`,
 };

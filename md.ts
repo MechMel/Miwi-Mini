@@ -4,6 +4,8 @@ const hintMaterial = Color<RW>(`#c4c4c4`);
 /** @About A box is the simplest UI widget. */
 const box = Widget.template();
 
+const link = Widget.template({ textColor: `#36659f`, textIsUnderlined: true });
+
 /** @About Describes a card. */
 const card = Widget.template({
   width: Size.grow,
@@ -30,7 +32,7 @@ const button = Widget.template({
           textColor: Color.white,
           cornerRadius: 0.5,
           outlineColor: Color.transparent,
-          outlineSize: 0.15,
+          //outlineSize: 0.15,
           background: primaryMaterial,
           shadowSize: 0,
           shadowDirection: Align.bottomRight,
@@ -211,7 +213,7 @@ const page = Widget.template({
         config,
         ...contents,
       ),
-      box(
+      /*box(
         {
           width: Size.grow,
           height: Size.shrink,
@@ -219,7 +221,7 @@ const page = Widget.template({
           contentAlign: Align.bottomRight,
         },
         config?.floatingActionButton ?? [],
-      ),
+      ),*/
       config?.bottomNavBar ?? [],
     );
   },
