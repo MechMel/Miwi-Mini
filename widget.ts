@@ -1,5 +1,5 @@
-const isDebugMode = true;
-const isDesktopView = Bool<RW>(true);
+const isDebugMode = false;
+const isDesktopView = Bool<RW>(false);
 const debugViewportWidth = ifel(isDesktopView, 75, 40);
 const debugViewportHeight = ifel(isDesktopView, 40, 75);
 
@@ -248,8 +248,18 @@ _addNewContentCompiler({
 type FlexSize<P extends VarPerms = RW> = Type<P, typeof FlexSize>;
 const FlexSize = Var.newType({
   is: (x) => exists(x.flex),
-  construct: (x: { flex: Num<RW> }) => x,
+  construct: ({
+    flex = 1 as Num<RW>,
+    min = 0 as Num<RW>,
+    max = Infinity as Num<RW>,
+  }) => ({
+    flex: flex,
+    min: min,
+    max: max,
+  }),
   flex: 1,
+  min: 0,
+  max: Infinity,
 });
 type Size<P extends VarPerms = RW> = Type<P, typeof Size>;
 const Size = Var.newType({
@@ -258,8 +268,18 @@ const Size = Var.newType({
   construct: (x: number | string | Lit<FlexSize>) => x,
   shrink: -1,
   grow: callable({
-    call: (flex: number = 1) => ({ flex }),
+    call: ({
+      flex = 1 as Num<RW>,
+      min = 0 as Num<RW>,
+      max = Infinity as Num<RW>,
+    }) => ({
+      flex: flex,
+      min: min,
+      max: max,
+    }),
     flex: 1,
+    min: 0,
+    max: Infinity,
   }),
 });
 const _getSizeGrows = (givenSize: Size, childGrows: Bool) =>
@@ -269,24 +289,45 @@ widgetStyleBuilders.push(function (params: {
   parent: Widget;
   childrenInfo: _ContentCompilationResults;
 }) {
-  const computeSizeInfo = (givenSize: Size, childGrows: Bool) => {
+  const computeSizeInfo = (
+    isMainAxis: Bool,
+    givenSize: Size,
+    childGrows: Bool,
+  ) => {
+    const NONE = ``;
     const sizeGrows = _getSizeGrows(givenSize, childGrows);
     const exactSize = ifel(
-      Str.is(givenSize),
-      givenSize as Str,
+      and(not(isMainAxis), sizeGrows),
+      `100%`,
       ifel(
-        and(not(equ(givenSize, Size.shrink)), not(sizeGrows)),
-        numToStandardHtmlUnit(givenSize as Num),
-        ``,
+        Str.is(givenSize),
+        givenSize as Str,
+        ifel(
+          and(not(equ(givenSize, Size.shrink)), not(sizeGrows)),
+          sizeToCss(givenSize as Num),
+          NONE,
+        ),
       ),
     );
-    return [exactSize, sizeGrows] as const;
+    const minSize = ifel(
+      FlexSize.is(givenSize),
+      sizeToCss((givenSize as FlexSize).min),
+      exactSize,
+    );
+    const maxSize = ifel(
+      FlexSize.is(givenSize),
+      sizeToCss((givenSize as FlexSize).max),
+      exactSize,
+    );
+    return [exactSize, minSize, maxSize, sizeGrows] as const;
   };
-  const [exactWidth, widthGrows] = computeSizeInfo(
+  const [exactWidth, wMin, wMax, widthGrows] = computeSizeInfo(
+    equ(params.parent.contentAxis, Axis.horizontal),
     params.widget.width,
     params.childrenInfo.widthGrows,
   );
-  const [exactHeight, heightGrows] = computeSizeInfo(
+  const [exactHeight, hMin, hMax, heightGrows] = computeSizeInfo(
+    equ(params.parent.contentAxis, Axis.vertical),
     params.widget.height,
     params.childrenInfo.heightGrows,
   );
@@ -295,48 +336,43 @@ widgetStyleBuilders.push(function (params: {
     boxSizing: `border-box`,
     // Using minWidth and maxWidth tells css to not override the size of this element
     width: exactWidth,
-    minWidth: exactWidth,
-    maxWidth: exactWidth,
+    minWidth: wMin,
+    maxWidth: wMax,
     height: exactHeight,
-    minHeight: exactHeight,
-    maxHeight: exactHeight,
-    flexGrow: ifel(
+    minHeight: hMin,
+    maxHeight: hMax,
+    flexBasis: ifel(
       equ(params.parent.contentAxis, Axis.vertical),
       ifel(
         FlexSize.is(params.widget.height),
-        (params.widget.height as FlexSize).flex,
-        ifel(heightGrows, 1, ``),
+        concat(mul((params.widget.height as FlexSize).flex, 100), `%`),
+        ifel(heightGrows, `100%`, ``),
       ),
       ifel(
         FlexSize.is(params.widget.width),
-        (params.widget.width as FlexSize).flex,
-        ifel(widthGrows, 1, ``),
+        concat(mul((params.widget.width as FlexSize).flex, 100), `%`),
+        ifel(widthGrows, `100%`, ``),
       ),
-    ),
-    alignSelf: ifel(
-      or(
-        and(equ(params.parent.contentAxis, Axis.horizontal), heightGrows),
-        and(equ(params.parent.contentAxis, Axis.vertical), widthGrows),
-      ),
-      `stretch`,
-      ``,
     ),
   };
 });
 
-const numToStandardHtmlUnit = (num: Num) =>
-  //computed(() => `${mul(num, div(_pageWidthVmin/* 40 */, 24))}vmin`, [num]);
+const sizeToCss = (x: Num | Str) =>
   computed(
     () =>
       ifel(
-        isDebugMode,
-        concat(
-          mul(num, div(debugViewportWidth, ifel(isDesktopView, 72, 24))),
-          `vmin`,
+        Num.is(x),
+        ifel(
+          isDebugMode,
+          concat(
+            mul(x as Num, div(debugViewportWidth, ifel(isDesktopView, 72, 24))),
+            `vmin`,
+          ),
+          concat(mul(x as Num, 1 / fontSizeToHtmlUnit), `rem`),
         ),
-        concat(mul(num, 1 / fontSizeToHtmlUnit), `rem`),
+        x,
       ),
-    [num],
+    [x],
   );
 
 //
@@ -406,9 +442,29 @@ const Material = Var.newType({
 });
 
 /** @Note Allows for uniquely styling individual sides of a box. */
-type OutlineSize<P extends VarPerms = R> = Type<P, typeof OutlineSize>;
-const OutlineSize = Var.newType({
-  is: (v) =>
+type Sides<T extends VarOrLit<R, NotVar>, P extends VarPerms = R> = VarOrLit<
+  P,
+  {
+    top: T;
+    right: T;
+    bottom: T;
+    left: T;
+  }
+>;
+const Sides = callable({
+  call: <T extends VarOrLit<R, NotVar>, P extends R | RW = RW>(allSides: T) =>
+    Var<P, Lit<Sides<T, P>>>({
+      left: allSides,
+      top: allSides,
+      right: allSides,
+      bottom: allSides,
+    }),
+
+  fromFuncs: <T extends VarOrLit<R, NotVar>, P extends R | RW = RW>(
+    params: VarFromFuncsParams<P, Lit<Sides<T, P>>>,
+  ) => Var.fromFuncs<P, Lit<Sides<T, P>>>(params),
+
+  is: (v: any) =>
     exists(v.left) &&
     Var.toLit(Num.is(v.left)) &&
     exists(v.top) &&
@@ -417,35 +473,53 @@ const OutlineSize = Var.newType({
     Var.toLit(Num.is(v.right)) &&
     exists(v.bottom) &&
     Var.toLit(Num.is(v.bottom)),
-  construct: (allSides: Num) => ({
-    left: allSides,
-    top: allSides,
-    right: allSides,
-    bottom: allSides,
-  }),
-  only: ({
-    left = 0 as Num,
-    top = 0 as Num,
-    right = 0 as Num,
-    bottom = 0 as Num,
-  }) => ({
-    left: left,
-    top: top,
-    right: right,
-    bottom: bottom,
-  }),
-  symmetric: ({ horizontal = 0 as Num, vertical = 0 as Num }) => ({
-    left: vertical,
-    top: horizontal,
-    right: vertical,
-    bottom: horizontal,
-  }),
-  all: (allSides: Num) => ({
-    left: allSides,
-    top: allSides,
-    right: allSides,
-    bottom: allSides,
-  }),
+
+  toCss: (sides: Padding) =>
+    ifel(
+      or(Num.is(sides), Str.is(sides)),
+      sizeToCss(sides as Num | Str),
+      concat(
+        sizeToCss((sides as Sides<Num | Str>).top ?? ``),
+        ` `,
+        sizeToCss((sides as Sides<Num | Str>).right ?? ``),
+        ` `,
+        sizeToCss((sides as Sides<Num | Str>).bottom ?? ``),
+        ` `,
+        sizeToCss((sides as Sides<Num | Str>).left ?? ``),
+      ),
+    ),
+
+  only: <T extends VarOrLit<R, NotVar>, P extends R | RW = RW>({
+    left = 0 as T,
+    top = 0 as T,
+    right = 0 as T,
+    bottom = 0 as T,
+  }) =>
+    Var<P, Lit<Sides<T, P>>>({
+      left: left,
+      top: top,
+      right: right,
+      bottom: bottom,
+    }),
+
+  symmetric: <T extends VarOrLit<R, NotVar>, P extends R | RW = RW>({
+    horizontal = 0 as T,
+    vertical = 0 as T,
+  }) =>
+    Var<P, Lit<Sides<T, P>>>({
+      left: vertical,
+      top: horizontal,
+      right: vertical,
+      bottom: horizontal,
+    }),
+
+  all: <T extends VarOrLit<R, NotVar>, P extends R | RW = RW>(allSides: T) =>
+    Var<P, Lit<Sides<T, P>>>({
+      left: allSides,
+      top: allSides,
+      right: allSides,
+      bottom: allSides,
+    }),
 });
 widgetStyleBuilders.push((params: { widget: Widget }) => {
   const backgroundIsColor = Color.is(params.widget.background);
@@ -453,12 +527,12 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
     // Corner Radius
     borderRadius: ifel(
       Num.is(params.widget.cornerRadius),
-      numToStandardHtmlUnit(params.widget.cornerRadius as Num),
+      sizeToCss(params.widget.cornerRadius as Num),
       params.widget.cornerRadius,
     ),
 
     // Outline
-    border: concat(`solid `, params.widget.outlineColor),
+    /*border: concat(`solid `, params.widget.outlineColor),
     borderWidth: ifel(
       Num.is(params.widget.outlineSize),
       numToStandardHtmlUnit(params.widget.outlineSize as Num),
@@ -474,17 +548,15 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
         numToStandardHtmlUnit((params.widget.outlineSize as OutlineSize).left),
       ),
     ),
-    outline: `none`,
-    /*outline: concat(
-      numToStandardHtmlUnit(params.widget.outlineSize),
+    outline: `none`,*/
+    border: `none`,
+    outline: concat(
+      sizeToCss(params.widget.outlineSize),
       ` solid `,
       params.widget.outlineColor,
     ),
 
-    outlineOffset: concat(
-      `-`,
-      numToStandardHtmlUnit(params.widget.outlineSize),
-    ),*/
+    outlineOffset: concat(`-`, sizeToCss(params.widget.outlineSize)),
 
     // Background
     backgroundColor: ifel(backgroundIsColor, params.widget.background, ``),
@@ -500,15 +572,15 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
 
     // Shadow
     boxShadow: concat(
-      numToStandardHtmlUnit(
+      sizeToCss(
         mul(0.12, params.widget.shadowSize, params.widget.shadowDirection.x),
       ),
       ` `,
-      numToStandardHtmlUnit(
+      sizeToCss(
         mul(-0.12, params.widget.shadowSize, params.widget.shadowDirection.y),
       ),
       ` `,
-      numToStandardHtmlUnit(mul(0.225, params.widget.shadowSize)),
+      sizeToCss(mul(0.225, params.widget.shadowSize)),
       ` 0 `,
       Color.grey,
     ),
@@ -522,13 +594,9 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
 //
 
 // SECTION: Padding
-type Padding = number; //Num | [Num, Num] | [Num, Num, Num, Num];
+type Padding = Str | Num | Sides<Str | Num>;
 widgetStyleBuilders.push((params: { widget: Widget }) => ({
-  padding: ifel(
-    Num.is(params.widget.padding),
-    numToStandardHtmlUnit(params.widget.padding as Num),
-    params.widget.padding,
-  ),
+  padding: Sides.toCss(params.widget.padding),
 }));
 
 //
@@ -692,7 +760,7 @@ widgetStyleBuilders.push((params: { widget: Widget }) => ({
       equ(params.widget.contentAxis, Axis.vertical),
       Num.is(params.widget.contentSpacing),
     ),
-    numToStandardHtmlUnit(params.widget.contentSpacing as Num),
+    sizeToCss(params.widget.contentSpacing as Num),
     ``,
   ),
   columnGap: ifel(
@@ -700,7 +768,7 @@ widgetStyleBuilders.push((params: { widget: Widget }) => ({
       equ(params.widget.contentAxis, Axis.horizontal),
       Num.is(params.widget.contentSpacing),
     ),
-    numToStandardHtmlUnit(params.widget.contentSpacing as Num),
+    sizeToCss(params.widget.contentSpacing as Num),
     ``,
   ),
 }));
@@ -729,8 +797,7 @@ widgetStyleBuilders.push((params: { widget: Widget }) => ({
 
 const textColorBody = Color<RW>(`#333333`);
 const fontSizeToHtmlUnit = 0.825;
-const numToFontSize = (num: Num) =>
-  numToStandardHtmlUnit(mul(fontSizeToHtmlUnit, num));
+const numToFontSize = (num: Num) => sizeToCss(mul(fontSizeToHtmlUnit, num));
 
 //
 //
@@ -746,13 +813,13 @@ type WidgetLit = {
   height: Size;
   cornerRadius: Num | Str; // | [Num, Num, Num, Num];
   outlineColor: Color;
-  outlineSize: Num | OutlineSize;
+  outlineSize: Num; // | OutlineSize;
   background: Material;
   shadowSize: Num;
   shadowDirection: Align;
   onTap: (() => void) | undefined;
   //interaction: { onTap: function() {}, onDoubleTap: function() {}, onLongPress: function() {}, }
-  padding: Num | Str;
+  padding: Padding;
   contentAlign: Align;
   contentAxis: Axis;
   contentIsScrollableX: Bool;
@@ -952,7 +1019,7 @@ _addNewContentCompiler({
 });
 
 /** @About converts from standard Moa units to a size that makes sense for icons. */
-const numToIconSize = (num: Num) => numToStandardHtmlUnit(mul(0.9, num));
+const numToIconSize = (num: Num) => sizeToCss(mul(0.9, num));
 
 //
 //

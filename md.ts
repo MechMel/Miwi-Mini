@@ -172,7 +172,7 @@ const appBar = Widget.template({
         computed(
           () =>
             extractConfigAndContentsFromWidgetParams(params)?.config?.title ??
-            currentPage.value.title,
+            currentPage.title,
           [currentPage],
         ),
         box({ width: 1, height: 1 }),
