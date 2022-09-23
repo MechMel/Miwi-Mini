@@ -250,7 +250,7 @@ const FlexSize = Var.newType({
   is: (x) => exists(x.flex),
   construct: ({
     flex = 1 as Num<RW>,
-    min = 0 as Num<RW>,
+    min = -1 as Num<RW>,
     max = Infinity as Num<RW>,
   }) => ({
     flex: flex,
@@ -258,7 +258,7 @@ const FlexSize = Var.newType({
     max: max,
   }),
   flex: 1,
-  min: 0,
+  min: -1,
   max: Infinity,
 });
 type Size<P extends VarPerms = RW> = Type<P, typeof Size>;
@@ -270,7 +270,7 @@ const Size = Var.newType({
   grow: callable({
     call: ({
       flex = 1 as Num<RW>,
-      min = 0 as Num<RW>,
+      min = -1 as Num<RW>,
       max = Infinity as Num<RW>,
     }) => ({
       flex: flex,
@@ -278,7 +278,7 @@ const Size = Var.newType({
       max: max,
     }),
     flex: 1,
-    min: 0,
+    min: -1,
     max: Infinity,
   }),
 });
@@ -305,18 +305,26 @@ widgetStyleBuilders.push(function (params: {
         ifel(
           and(not(equ(givenSize, Size.shrink)), not(sizeGrows)),
           sizeToCss(givenSize as Num),
-          NONE,
+          `fit-content`,
         ),
       ),
     );
     const minSize = ifel(
       FlexSize.is(givenSize),
-      sizeToCss((givenSize as FlexSize).min),
+      ifel(
+        equ(sizeToCss((givenSize as FlexSize).min), Size.shrink),
+        `fit-content`,
+        sizeToCss((givenSize as FlexSize).min),
+      ),
       exactSize,
     );
     const maxSize = ifel(
       FlexSize.is(givenSize),
-      sizeToCss((givenSize as FlexSize).max),
+      ifel(
+        equ(sizeToCss((givenSize as FlexSize).max), Size.shrink),
+        `fit-content`,
+        sizeToCss((givenSize as FlexSize).max),
+      ),
       exactSize,
     );
     return [exactSize, minSize, maxSize, sizeGrows] as const;
