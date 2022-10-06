@@ -114,6 +114,7 @@ function createHtmlElement(params: {
   elementType?: string;
   id?: string;
   class?: string;
+  href?: Str;
 }) {
   const htmlElement = document.createElement(params.tag);
 
@@ -138,9 +139,19 @@ function createHtmlElement(params: {
     }
   }
 
+  // Set href
+  if (exists(params.href)) {
+    doOnChange(
+      // We need to do "?? ``" because setting a style prop to undefined doesn't clear the old value
+      () => {
+        htmlElement.setAttribute("href", Var.toLit(params.href!));
+      },
+      params.href,
+    );
+  }
+
   // Add children
   if (exists(params.content)) {
-    const oldTriggers = [];
     doOnChange(() => {
       while (htmlElement.firstChild) {
         htmlElement.removeChild(htmlElement.firstChild);
@@ -846,6 +857,7 @@ type WidgetLit = {
   textIsItalic: Bool;
   textIsUnderlined: Bool;
   textColor: Color;
+  href: Str;
   contents: WidgetContent;
   readonly htmlTag: string;
   readonly toString: () => string;
@@ -867,6 +879,7 @@ const _defaultWidget: WidgetLit = {
   contentIsScrollableX: false,
   contentIsScrollableY: false,
   contentSpacing: 0,
+  href: ``,
   textSize: 1,
   textIsBold: false,
   textIsItalic: false,
@@ -1056,6 +1069,7 @@ _addNewContentCompiler({
     heightGrows: false,
     htmlElements: [
       createHtmlElement({
+        // Use `a` when this is a link
         tag: `p`,
         style: {
           ...testStyleToCss({ widget: params.parent }),
@@ -1070,6 +1084,7 @@ _addNewContentCompiler({
           margin: 0,
           padding: 0,
         },
+        href: params.parent.href,
         content: document.createTextNode(params.contents.toString()),
       }),
     ],
