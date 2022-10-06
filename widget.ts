@@ -603,6 +603,7 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
 
 // SECTION: Padding
 type Padding = Str | Num | Sides<Str | Num>;
+const Padding = Sides;
 widgetStyleBuilders.push((params: { widget: Widget }) => ({
   padding: Sides.toCss(params.widget.padding),
 }));
@@ -790,18 +791,24 @@ widgetStyleBuilders.push((params: { widget: Widget }) => ({
 // SECTION: Text Style
 // TODO: Change textColor to textMaterial. Then use text to mask a backdrop for gradiants or images.
 // Also, have mask be a valid material so that the same back drop can be used for several different elements.
-widgetStyleBuilders.push((params: { widget: Widget }) => ({
+const testStyleToCss = (params: { widget: Widget }) => ({
   fontFamily: `Roboto`,
   fontSize: ifel(
     Num.is(params.widget.textSize),
     numToFontSize(params.widget.textSize as Num),
     params.widget.textSize as Str,
   ),
-  fontWeight: params.widget.textIsBold ? `bold` : ``,
-  fontStyle: params.widget.textIsItalic ? `italic` : ``,
-  textDecoration: ifel(params.widget.textIsUnderlined, `underline`, ``),
+  fontWeight: ifel(params.widget.textIsBold, `bold`, ``),
+  fontStyle: ifel(params.widget.textIsItalic, `italic`, ``),
+  textAlign:
+    params.widget.contentAlign.x === -1
+      ? `left`
+      : params.widget.contentAlign.x === 0
+      ? `center`
+      : `right`,
   color: params.widget.textColor,
-}));
+});
+widgetStyleBuilders.push(testStyleToCss);
 
 const textColorBody = Color<RW>(`#333333`);
 const fontSizeToHtmlUnit = 0.825;
@@ -1051,15 +1058,9 @@ _addNewContentCompiler({
       createHtmlElement({
         tag: `p`,
         style: {
-          color: params.parent.textColor,
-          fontFamily: `Roboto`,
-          fontSize: ifel(
-            Num.is(params.parent.textSize),
-            numToFontSize(params.parent.textSize as Num),
-            params.parent.textSize as Str,
-          ),
-          fontWeight: ifel(params.parent.textIsBold, `bold`, ``),
-          fontStyle: ifel(params.parent.textIsItalic, `italic`, ``),
+          ...testStyleToCss({ widget: params.parent }),
+          fontWeight: ifel(params.parent.textIsBold, `bold`, `normal`),
+          fontStyle: ifel(params.parent.textIsItalic, `italic`, `normal`),
           textAlign:
             params.parent.contentAlign.x === -1
               ? `left`
