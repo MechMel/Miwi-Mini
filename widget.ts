@@ -1025,6 +1025,11 @@ const HtmlNode = Var.newType({
         typeof x.nodeName === "string",
   construct: (v: Node) => v,
 });
+const createTextNode = (str: Str) => {
+  const newTextNode = document.createTextNode(``);
+  doOnChange(() => (newTextNode.textContent = Var.toLit(str)), str);
+  return newTextNode;
+};
 _addNewContentCompiler({
   isThisType: HtmlNode.isLit,
   compile: (params: {
