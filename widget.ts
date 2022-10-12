@@ -10,7 +10,7 @@ const debugViewportHeight = ifel(isDesktopView, 40, 75);
 //
 
 // SECTION: Contents
-type WidgetContent = OneOrMore<R, Str | Bool | Num | Icon | Widget>;
+type WidgetContent = OneOrMore<R, Str | Bool | Num | Icon | HtmlNode | Widget>;
 const isContent = function (
   possibleContent: any,
 ): possibleContent is WidgetContent {
@@ -115,6 +115,7 @@ function createHtmlElement(params: {
   id?: string;
   class?: string;
   href?: Str;
+  target?: Str;
 }) {
   const htmlElement = document.createElement(params.tag);
 
@@ -124,6 +125,8 @@ function createHtmlElement(params: {
     htmlElement.setAttribute(`class`, params.class as any);
   if (exists(params.elementType))
     htmlElement.setAttribute(`type`, params.elementType as any);
+  if (exists(params.target))
+    htmlElement.setAttribute(`target`, params.target as any);
 
   // Set onClick
   if (exists(params.onClick)) htmlElement.onclick = params.onClick;
@@ -181,6 +184,8 @@ function createHtmlElement(params: {
       }
     }, params.content);
   }
+
+  console.log(htmlElement.outerHTML);
 
   return htmlElement;
 }
@@ -809,8 +814,8 @@ const testStyleToCss = (params: { widget: Widget }) => ({
     numToFontSize(params.widget.textSize as Num),
     params.widget.textSize as Str,
   ),
-  fontWeight: ifel(params.widget.textIsBold, `bold`, ``),
-  fontStyle: ifel(params.widget.textIsItalic, `italic`, ``),
+  fontWeight: ifel(params.widget.textIsBold, `bold`, `normal`),
+  fontStyle: ifel(params.widget.textIsItalic, `italic`, `normal`),
   textAlign:
     params.widget.contentAlign.x === -1
       ? `left`
@@ -928,11 +933,26 @@ const Widget = Var.newType({
     if (contents.length > 0) {
       newWidget.contents = contents;
     }
-    newWidget.toString = function (): string {
+    /*newWidget.toString = function (): string {
       // Maybe swap to <MiwiWidget>{...json}</MiwiWidget>
       return `${_inlineContentOpenTag}${JSON.stringify(
         newWidget,
       )}${_inlineContentCloseTag}`;
+    };*/
+    newWidget.toString = function (): string {
+      // Maybe swap to <MiwiWidget>{...json}</MiwiWidget>
+      return (
+        Var.toLit(
+          Var.toLit(
+            Var.toLit(
+              compileContentsToHtml({
+                contents: newWidget,
+                parent: _defaultWidget,
+              }),
+            ).htmlElements,
+          )[0],
+        ) as any
+      ).outerHTML;
     };
     return newWidget;
   },
@@ -985,6 +1005,36 @@ const Widget = Var.newType({
 type _WidgetConstructorOptions =
   | Partial<OmitToNever<WidgetLit, `htmlTag` | `contents`>>
   | WidgetContent;
+
+//
+//
+//
+//
+//
+
+// SECTION: Html Nodes
+type HtmlNode<P extends VarPerms = R> = Type<P, typeof HtmlNode>;
+const HtmlNode = Var.newType({
+  // From: https://stackoverflow.com/a/384380
+  is: (x: any) =>
+    typeof Node === "object"
+      ? x instanceof Node
+      : x &&
+        typeof x === "object" &&
+        typeof x.nodeType === "number" &&
+        typeof x.nodeName === "string",
+  construct: (v: Node) => v,
+});
+_addNewContentCompiler({
+  isThisType: HtmlNode.isLit,
+  compile: (params: {
+    contents: Lit<HtmlNode>;
+  }): _ContentCompilationResults => ({
+    htmlElements: [params.contents],
+    widthGrows: false,
+    heightGrows: false,
+  }),
+});
 
 //
 //
@@ -1068,19 +1118,12 @@ _addNewContentCompiler({
     widthGrows: false,
     heightGrows: false,
     htmlElements: [
+      //document.createTextNode(params.contents.toString()),
       createHtmlElement({
         // Use `a` when this is a link
         tag: `p`,
         style: {
           ...testStyleToCss({ widget: params.parent }),
-          fontWeight: ifel(params.parent.textIsBold, `bold`, `normal`),
-          fontStyle: ifel(params.parent.textIsItalic, `italic`, `normal`),
-          textAlign:
-            params.parent.contentAlign.x === -1
-              ? `left`
-              : params.parent.contentAlign.x === 0
-              ? `center`
-              : `right`,
           margin: 0,
           padding: 0,
         },

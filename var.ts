@@ -220,6 +220,10 @@ const Var = callable({
        * reactive boolean. */
       is: (x: any) => computed(() => ntParams.is(Var.toLit(x)), [x]),
 
+      /** @About Checks whether or not the given value is a literal instance of this type and
+       * returns a non-reactive boolean. */
+      isLit: (x: any) => ntParams.is(Var.toLit(x)),
+
       ...(() => {
         const staticProps: any = {};
         for (const k in ntParams) {
