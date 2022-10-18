@@ -608,6 +608,9 @@ widgetStyleBuilders.push((params: { widget: Widget }) => {
       ` 0 `,
       Color.grey,
     ),
+
+    // Set cursor
+    cursor: ifel(exists(params.widget.onTap), `pointer`, `normal`),
   };
 });
 
@@ -816,6 +819,7 @@ const testStyleToCss = (params: { widget: Widget }) => ({
   ),
   fontWeight: ifel(params.widget.textIsBold, `bold`, `normal`),
   fontStyle: ifel(params.widget.textIsItalic, `italic`, `normal`),
+  textDecoration: ifel(params.widget.textIsUnderlined, `underline`, `none`),
   textAlign:
     params.widget.contentAlign.x === -1
       ? `left`

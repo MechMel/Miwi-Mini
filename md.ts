@@ -4,7 +4,13 @@ const hintMaterial = Color<RW>(`#c4c4c4`);
 /** @About A box is the simplest UI widget. */
 const box = Widget.template();
 
-const link = Widget.template({ textColor: `#36659f`, textIsUnderlined: true });
+const link = ({ text = `link`, url = `tke.us` }) =>
+  createHtmlElement({
+    tag: `a`,
+    href: url,
+    target: "_blank",
+    content: createTextNode(text),
+  });
 
 /** @About Describes a card. */
 const card = Widget.template({
