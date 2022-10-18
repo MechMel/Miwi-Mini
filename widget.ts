@@ -59,7 +59,7 @@ const compileContentsToHtml = function (params: {
         });
       }
     }
-    console.log(params.contents.value);
+    //console.log(params.contents.value);
     throw `Encountered an error in "miwi/widget.ts.compileContentsToHtml". Could not find a content compiler for ${JSON.stringify(
       params.contents,
       null,
@@ -116,6 +116,7 @@ function createHtmlElement(params: {
   class?: string;
   href?: Str;
   target?: Str;
+  download?: Str;
 }) {
   const htmlElement = document.createElement(params.tag);
 
@@ -127,6 +128,8 @@ function createHtmlElement(params: {
     htmlElement.setAttribute(`type`, params.elementType as any);
   if (exists(params.target))
     htmlElement.setAttribute(`target`, params.target as any);
+  if (exists(params.download))
+    htmlElement.setAttribute(`download`, params.download as any);
 
   // Set onClick
   if (exists(params.onClick)) htmlElement.onclick = params.onClick;
@@ -185,7 +188,7 @@ function createHtmlElement(params: {
     }, params.content);
   }
 
-  console.log(htmlElement.outerHTML);
+  //console.log(htmlElement.outerHTML);
 
   return htmlElement;
 }
