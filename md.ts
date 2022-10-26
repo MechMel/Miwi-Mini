@@ -169,8 +169,8 @@ const appBar = Widget.template({
           padding: 1,
           contentAlign: Align.center,
           contentAxis: Axis.horizontal,
-          contentIsScrollableX: false,
-          contentIsScrollableY: false,
+          overflowX: Overflow.clip,
+          overflowY: Overflow.clip,
           contentSpacing: Spacing.spaceBetween,
           //htmlTag: `nav`,
         },
@@ -214,10 +214,21 @@ const page = Widget.template({
           contentSpacing: 1,
           contentAlign: Align.topCenter,
           contentAxis: Axis.vertical,
-          contentIsScrollableY: true,
+          //overflowY: Overflow.scroll,
         }),
         config,
-        ...contents,
+        createHtmlElement({
+          tag: `div`,
+          style: { width: `100%`, height: `100%`, overflowY: `auto` },
+          content: createHtmlElement({
+            tag: `div`,
+            style: { margin: `0 auto` },
+            content: compileContentsToHtml({
+              contents: contents as any,
+              parent: box(),
+            }).htmlElements as any,
+          }),
+        }),
       ),
       /*box(
         {

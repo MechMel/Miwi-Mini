@@ -750,15 +750,24 @@ widgetStyleBuilders.push((params: { widget: Widget }) => ({
 //
 //
 
-// SECTION: Content Is Scrollable
+// SECTION: Overflow
+// Centering flexbox children and enabling scroll is broken. Here's why:
+// https://stackoverflow.com/questions/33454533/cant-scroll-to-top-of-flex-item-that-is-overflowing-container
+type Overflow<P extends VarPerms = R> = Type<P, typeof Overflow>;
+const Overflow = Enum(`clip`, `scroll`, `wrap`);
 widgetStyleBuilders.push((params: { widget: Widget }) => ({
+  flexWrap: ifel(
+    equ(params.widget.contentAxis, Axis.horizontal),
+    ifel(equ(params.widget.overflowX, Overflow.wrap), `wrap`, ``),
+    ifel(equ(params.widget.overflowY, Overflow.wrap), `wrap`, ``),
+  ),
   overflowX: ifel(
-    params.widget.contentIsScrollableX,
+    equ(params.widget.overflowX, Overflow.scroll),
     `overlay`, // Scroll when nesscary, and float above contents
     ``, //`hidden`,
   ),
   overflowY: ifel(
-    params.widget.contentIsScrollableY,
+    equ(params.widget.overflowY, Overflow.scroll),
     `auto`, // Scroll when nesscary, and float above contents
     ``, //`hidden`,
   ),
@@ -860,8 +869,8 @@ type WidgetLit = {
   padding: Padding;
   contentAlign: Align;
   contentAxis: Axis;
-  contentIsScrollableX: Bool;
-  contentIsScrollableY: Bool;
+  overflowX: Overflow;
+  overflowY: Overflow;
   contentSpacing: Spacing;
   // contentStyle: style.deferToParent,
   textSize: Num | Str;
@@ -888,8 +897,8 @@ const _defaultWidget: WidgetLit = {
   padding: 0,
   contentAlign: Align.center,
   contentAxis: Axis.vertical,
-  contentIsScrollableX: false,
-  contentIsScrollableY: false,
+  overflowX: Overflow.clip,
+  overflowY: Overflow.clip,
   contentSpacing: 0,
   href: ``,
   textSize: 1,
