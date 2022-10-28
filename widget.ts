@@ -238,6 +238,21 @@ _addNewContentCompiler({
       }
     }
 
+    let children = childrenInfo.htmlElements;
+    /*if (params.contents.overflowY === Overflow.scroll) {
+      children = [
+        createHtmlElement({
+          tag: `div`,
+          style: {
+            width: `100%`,
+            height: `max-content`,
+            margin: `0 auto`,
+          },
+          content: childrenInfo.htmlElements,
+        }),
+      ];
+    }*/
+
     // Compile the widget
     return {
       widthGrows: _getSizeGrows(params.contents.width, childrenInfo.widthGrows),
@@ -250,7 +265,7 @@ _addNewContentCompiler({
           tag: Var.toLit(Var.toLit(params.contents).htmlTag),
           onClick: params.contents.onTap,
           style: parentStyle,
-          content: childrenInfo.htmlElements,
+          content: children,
         }),
       ],
     };
