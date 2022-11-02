@@ -34,7 +34,7 @@ const CanBeCastToHtml = {
 } as const;
 type WidgetContent<P extends VarPerms = R> = OneOrMore<
   P,
-  Primitive<P> | VarOrLit<P, CanBeCastToHtml>
+  Primitive<P> | HtmlNode<P> | VarOrLit<P, CanBeCastToHtml>
 >;
 type OldWidgetContent = OneOrMore<
   R,
