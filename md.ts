@@ -192,9 +192,9 @@ const page = Widget.template({
   call: (
     ...params: WidgetParams<{
       title: Str;
-      appBar: WidgetContent;
-      floatingActionButton: WidgetContent;
-      bottomNavBar: WidgetContent;
+      appBar: OldWidgetContent;
+      floatingActionButton: OldWidgetContent;
+      bottomNavBar: OldWidgetContent;
     }>
   ) => {
     const { config, contents } =
