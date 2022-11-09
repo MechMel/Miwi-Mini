@@ -214,21 +214,10 @@ const page = Widget.template({
           contentSpacing: 1,
           contentAlign: Align.topCenter,
           contentAxis: Axis.vertical,
-          //overflowY: Overflow.scroll,
+          overflowY: Overflow.scroll,
         }),
         config,
-        createHtmlElement({
-          tag: `div`,
-          style: { width: `100%`, height: `100%`, overflowY: `auto` },
-          content: createHtmlElement({
-            tag: `div`,
-            style: { margin: `0 auto` },
-            content: compileContentsToHtml({
-              contents: contents as any,
-              parent: box(),
-            }).htmlElements as any,
-          }),
-        }),
+        ...contents,
       ),
       /*box(
         {
