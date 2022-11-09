@@ -1,4 +1,8 @@
-type IconLit = { icon: string; toString: () => string };
+type IconLit = {
+  icon: string;
+  toHtml: (params: { parent: Widget }) => _ContentCompilationResults;
+  toString: () => string;
+};
 
 function _buildIconsObj<T1 extends readonly T2[] | [], T2 extends string>(
   unformattedIcons: T1,
@@ -9,6 +13,45 @@ function _buildIconsObj<T1 extends readonly T2[] | [], T2 extends string>(
       icon: unformattedIcons[i].startsWith(_numIconTag)
         ? unformattedIcons[i].substring(_numIconTag.length)
         : unformattedIcons[i],
+      toHtml({
+        parent = _defaultWidget as Widget,
+      }): _ContentCompilationResults {
+        const textNode = document.createTextNode(``);
+        doOnChange((x) => (textNode.nodeValue = x.toString()), this.icon);
+        return {
+          htmlElements: [
+            createHtmlElement({
+              tag: `span`,
+              class: `material-symbols-outlined`,
+              style: {
+                cursor: `default`,
+                width: ifel(
+                  Num.is(parent.textSize),
+                  numToIconSize(parent.textSize as Num),
+                  parent.textSize as Str,
+                ),
+                height: ifel(
+                  Num.is(parent.textSize),
+                  numToIconSize(parent.textSize as Num),
+                  parent.textSize as Str,
+                ),
+                color: parent.textColor,
+                display: `inline-block`,
+                verticalAlign: `middle`,
+                textAlign: `center`,
+                fontSize: ifel(
+                  Num.is(parent.textSize),
+                  numToIconSize(parent.textSize as Num),
+                  parent.textSize as Str,
+                ),
+              },
+              content: textNode,
+            }),
+          ],
+          widthGrows: false,
+          heightGrows: false,
+        };
+      },
       toString: function () {
         return `<MiwiElement>${JSON.stringify({
           icon: unformattedIcons[i],

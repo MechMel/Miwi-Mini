@@ -10,10 +10,39 @@ const debugViewportHeight = ifel(isDesktopView, 40, 75);
 //
 
 // SECTION: Contents
-type WidgetContent = OneOrMore<R, Str | Bool | Num | Icon | HtmlNode | Widget>;
+type EHtmlNode<P extends VarPerms = R> = VarOrLit<
+  P,
+  Node & {
+    widthGrows?: Bool;
+    heightGrows?: Bool;
+  }
+>;
+type EHtml<P extends VarPerms = R> = OneOrMore<P, EHtmlNode>;
+type Primitive<P extends VarPerms = R> = Str<P> | Num<P> | Bool<P>;
+const Primitive = {
+  is: (x: any): Bool => or(Str.is(x), Num.is(x), Bool.is(x)),
+} as const;
+/* type WidgetContent<P extends VarPerms = R> = OneOrMore<
+  P,
+  Primitive<P> | VarOrLit<P, { toHtml: (parent: Widget) => EHtml }>
+>; */
+type CanBeCastToHtml = {
+  toHtml: (params: { parent: Widget }) => _ContentCompilationResults;
+};
+const CanBeCastToHtml = {
+  is: (x: any): Bool => computed(() => exists(x.toHtml), [x, x.toHtml]),
+} as const;
+type WidgetContent<P extends VarPerms = R> = OneOrMore<
+  P,
+  Primitive<P> | HtmlNode<P> | VarOrLit<P, CanBeCastToHtml>
+>;
+type OldWidgetContent = OneOrMore<
+  R,
+  Str | Bool | Num | CanBeCastToHtml | HtmlNode | Widget
+>;
 const isContent = function (
   possibleContent: any,
-): possibleContent is WidgetContent {
+): possibleContent is OldWidgetContent {
   let isActuallyContent = false;
   if (Var.toLit(List.is(possibleContent))) {
     isActuallyContent = true;
@@ -31,7 +60,7 @@ const isContent = function (
   return isActuallyContent;
 };
 type _contentCompiler = {
-  isThisType: (contents: WidgetContent) => boolean;
+  isThisType: (contents: OldWidgetContent) => boolean;
   compile: (params: {
     // We use "any" so that children can specify their own type
     contents: NotVar & any;
@@ -46,46 +75,162 @@ type _ContentCompilationResults = {
 const _contentCompilers: _contentCompiler[] = [];
 const _addNewContentCompiler = (newCompiler: _contentCompiler) =>
   _contentCompilers.push(newCompiler);
-const compileContentsToHtml = function (params: {
-  contents: WidgetContent;
-  parent: Widget;
+const tryCompileToHtml = (
+  compile: () => VarOrLit<R, _ContentCompilationResults>,
+) => {
+  try {
+    return compile();
+  } catch (e) {
+    return {
+      htmlElements: [],
+      widthGrows: false,
+      heightGrows: false,
+    };
+  }
+};
+const compileContentsToHtml = function ({
+  parent = _defaultWidget as Widget,
+  contents = [] as OldWidgetContent,
 }): VarOrLit<R, _ContentCompilationResults> {
   return computed(() => {
-    for (const compiler of _contentCompilers) {
-      if (compiler.isThisType(params.contents)) {
-        return compiler.compile({
-          contents: Var.toLit(params.contents),
-          parent: Var.toLit(params.parent),
-        });
-      }
+    // Lists
+    if (Var.toLit(List.is(contents))) {
+      return computed(
+        () =>
+          tryCompileToHtml(() =>
+            Var.toLit(contents as List<R, any>).reduce(
+              (prev, cur) => {
+                const thisWidgetInfo = compileContentsToHtml({
+                  contents: cur,
+                  parent: parent,
+                });
+                return {
+                  htmlElements: List.concat(
+                    prev.htmlElements,
+                    thisWidgetInfo.htmlElements,
+                  ),
+                  widthGrows: or(thisWidgetInfo.widthGrows, prev.widthGrows),
+                  heightGrows: or(thisWidgetInfo.heightGrows, prev.heightGrows),
+                };
+              },
+              {
+                htmlElements: List<R, Var<R, Node>>(),
+                widthGrows: false,
+                heightGrows: false,
+              } as _ContentCompilationResults,
+            ),
+          ),
+        [],
+      );
+
+      // Primitives
+    } else if (Var.toLit(Primitive.is(contents))) {
+      return tryCompileToHtml(() => ({
+        widthGrows: false,
+        heightGrows: false,
+        htmlElements: [
+          //document.createTextNode(params.contents.toString()),
+          createHtmlElement({
+            // Use `a` when this is a link
+            tag: `p`,
+            style: {
+              ...textStyleToCss({ widget: parent }),
+              margin: 0,
+              padding: 0,
+            },
+            href: parent.href,
+            content: computed(
+              () => document.createTextNode(Var.toLit(contents).toString()),
+              [contents],
+            ),
+          }),
+        ],
+      }));
+
+      // Widgets
+    } else if (Var.toLit(Widget.is(contents))) {
+      return widgetToHtml({
+        contents: Var.toLit(contents) as Lit<Widget>,
+        parent: Var.toLit(parent) as Lit<Widget>,
+      });
+
+      // Icons
+    } else if (Var.toLit(CanBeCastToHtml.is(contents))) {
+      return tryCompileToHtml(() =>
+        (contents as CanBeCastToHtml).toHtml({
+          parent: parent,
+        }),
+      );
+
+      // Html Nodes
+    } else if (HtmlNode.is(contents)) {
+      return tryCompileToHtml(() => ({
+        htmlElements: [contents as HtmlNode],
+        widthGrows: false,
+        heightGrows: false,
+      }));
+
+      // Null
+    } else {
+      return tryCompileToHtml(() => ({
+        htmlElements: [],
+        widthGrows: false,
+        heightGrows: false,
+      }));
     }
-    //console.log(params.contents.value);
-    throw `Encountered an error in "miwi/widget.ts.compileContentsToHtml". Could not find a content compiler for ${JSON.stringify(
-      params.contents,
-      null,
-      2,
-    )}`;
-  }, [params.contents, params.parent]);
+    /* return computed(() => {
+        for (const compiler of _contentCompilers) {
+          if (compiler.isThisType(contents)) {
+            return compiler.compile({
+              contents: Var.toLit(contents),
+              parent: Var.toLit(parent),
+            });
+          }
+        }
+        //console.log(params.contents.value);
+        throw `Encountered an error in "miwi/widget.ts.compileContentsToHtml". Could not find a content compiler for ${JSON.stringify(
+          contents,
+          null,
+          2,
+        )}`;
+      }, [contents, parent]);*/
+  }, [contents, parent]);
 };
+function nullToHtml({
+  contents = null as undefined | null,
+  parent = _defaultWidget as Lit<Widget>,
+}): _ContentCompilationResults {
+  try {
+    return {
+      htmlElements: [],
+      widthGrows: false,
+      heightGrows: false,
+    };
+  } catch (e) {
+    return {
+      htmlElements: [],
+      widthGrows: false,
+      heightGrows: false,
+    };
+  }
+}
 _addNewContentCompiler({
-  isThisType: (x) => x === undefined || x === null,
-  compile: () => ({
-    htmlElements: [],
-    widthGrows: false,
-    heightGrows: false,
-  }),
+  isThisType: (x: any) => x === undefined || x === null,
+  compile: ({
+    contents = null as undefined | null,
+    parent = _defaultWidget as Lit<Widget>,
+  }) => nullToHtml({ contents, parent }),
 });
-_addNewContentCompiler({
-  isThisType: (contents: WidgetContent) => Var.toLit(List.is(contents)),
-  compile: (params: {
-    contents: (Str | Bool | Num | Icon | Widget)[];
-    parent: Lit<Widget>;
-  }) =>
-    params.contents.reduce(
+function listToHtml({
+  contents = [] as (Str | Bool | Num | Icon | Widget)[],
+  parent = _defaultWidget as Lit<Widget>,
+}): _ContentCompilationResults {
+  try {
+    return contents.reduce(
       (prev, cur) => {
         const thisWidgetInfo = compileContentsToHtml({
           contents: cur,
-          parent: params.parent,
+          parent: parent,
         });
         return {
           htmlElements: List.concat(
@@ -101,7 +246,21 @@ _addNewContentCompiler({
         widthGrows: false,
         heightGrows: false,
       } as _ContentCompilationResults,
-    ),
+    );
+  } catch (e) {
+    return {
+      htmlElements: [],
+      widthGrows: false,
+      heightGrows: false,
+    };
+  }
+}
+_addNewContentCompiler({
+  isThisType: (contents: OldWidgetContent) => Var.toLit(List.is(contents)),
+  compile: ({
+    contents = [] as (Str | Bool | Num | Icon | Widget)[],
+    parent = _defaultWidget as Lit<Widget>,
+  }) => listToHtml({ contents, parent }),
 });
 
 /** @About Since we don't have access to JSX or React, we use this instead as a short hand
@@ -210,27 +369,23 @@ const widgetStyleBuilders: ((params: {
 }) => _WidgetStylePart)[] = [];
 type _WidgetStylePart = { [key: string]: Str | Num | Bool };
 
-/** @About Converts a widget to an html element along with some other stats. */
-_addNewContentCompiler({
-  isThisType: (x) => {
-    return Var.toLit(Widget.is(x));
-  },
-  compile: function (params: {
-    contents: Lit<Widget>;
-    parent: Lit<Widget>;
-  }): _ContentCompilationResults {
+function widgetToHtml({
+  contents = _defaultWidget as Lit<Widget>,
+  parent = _defaultWidget as Lit<Widget>,
+}): _ContentCompilationResults {
+  try {
     // Compile the children
     const childrenInfo = compileContentsToHtml({
-      contents: params.contents.contents as WidgetContent,
-      parent: params.contents,
+      contents: contents.contents as OldWidgetContent,
+      parent: contents,
     });
 
     // Compile the styles
     const parentStyle: any = {};
     for (const i in widgetStyleBuilders) {
       const newProps = widgetStyleBuilders[i]({
-        widget: params.contents,
-        parent: params.parent,
+        widget: contents,
+        parent: parent,
         childrenInfo: childrenInfo,
       });
       for (const key in newProps) {
@@ -238,23 +393,55 @@ _addNewContentCompiler({
       }
     }
 
+    let children = childrenInfo.htmlElements;
+    /*if (params.contents.overflowY === Overflow.scroll) {
+      children = [
+        createHtmlElement({
+          tag: `div`,
+          style: {
+            width: `100%`,
+            height: `max-content`,
+            margin: `0 auto`,
+          },
+          content: childrenInfo.htmlElements,
+        }),
+      ];
+    }*/
+
     // Compile the widget
     return {
-      widthGrows: _getSizeGrows(params.contents.width, childrenInfo.widthGrows),
-      heightGrows: _getSizeGrows(
-        params.contents.height,
-        childrenInfo.heightGrows,
-      ),
+      widthGrows: _getSizeGrows(contents.width, childrenInfo.widthGrows),
+      heightGrows: _getSizeGrows(contents.height, childrenInfo.heightGrows),
       htmlElements: [
         createHtmlElement({
-          tag: Var.toLit(Var.toLit(params.contents).htmlTag),
-          onClick: params.contents.onTap,
+          tag: Var.toLit(Var.toLit(contents).htmlTag),
+          onClick: contents.onTap,
           style: parentStyle,
-          content: childrenInfo.htmlElements,
+          content: children,
         }),
       ],
     };
+  } catch (e) {
+    return {
+      htmlElements: [],
+      widthGrows: false,
+      heightGrows: false,
+    };
+  }
+}
+/** @About Converts a widget to an html element along with some other stats. */
+_addNewContentCompiler({
+  isThisType: (x) => {
+    return Var.toLit(Widget.is(x));
   },
+  compile: ({
+    contents = _defaultWidget as Lit<Widget>,
+    parent = _defaultWidget as Lit<Widget>,
+  }) =>
+    widgetToHtml({
+      contents,
+      parent,
+    }),
 });
 
 //
@@ -822,7 +1009,7 @@ widgetStyleBuilders.push((params: { widget: Widget }) => ({
 // SECTION: Text Style
 // TODO: Change textColor to textMaterial. Then use text to mask a backdrop for gradiants or images.
 // Also, have mask be a valid material so that the same back drop can be used for several different elements.
-const testStyleToCss = (params: { widget: Widget }) => ({
+const textStyleToCss = (params: { widget: Widget }) => ({
   fontFamily: `Roboto`,
   fontSize: ifel(
     Num.is(params.widget.textSize),
@@ -840,7 +1027,7 @@ const testStyleToCss = (params: { widget: Widget }) => ({
       : `right`,
   color: params.widget.textColor,
 });
-widgetStyleBuilders.push(testStyleToCss);
+widgetStyleBuilders.push(textStyleToCss);
 
 const textColorBody = Color<RW>(`#333333`);
 const fontSizeToHtmlUnit = 0.825;
@@ -879,7 +1066,7 @@ type WidgetLit = {
   textIsUnderlined: Bool;
   textColor: Color;
   href: Str;
-  contents: WidgetContent;
+  contents: OldWidgetContent;
   readonly htmlTag: string;
   readonly toString: () => string;
 };
@@ -912,8 +1099,8 @@ const _defaultWidget: WidgetLit = {
 type WidgetConfig = Partial<OmitToNever<WidgetLit, `htmlTag` | `contents`>>;
 type WidgetParams<ExtraConfig extends { [key: string]: any } = {}> = Parameters<
   (
-    options?: (Partial<ExtraConfig> & WidgetConfig) | WidgetContent,
-    ...contents: WidgetContent[]
+    options?: (Partial<ExtraConfig> & WidgetConfig) | OldWidgetContent,
+    ...contents: OldWidgetContent[]
   ) => void
 >;
 const extractConfigAndContentsFromWidgetParams = <
@@ -922,10 +1109,10 @@ const extractConfigAndContentsFromWidgetParams = <
   params: WidgetParams<ExtraConfig>,
 ): {
   config: Partial<ExtraConfig> & WidgetConfig;
-  contents: WidgetContent[];
+  contents: OldWidgetContent[];
 } => {
   let config: Partial<ExtraConfig> & WidgetConfig = {};
-  const contents = params as WidgetContent[];
+  const contents = params as OldWidgetContent[];
   if (!isContent(contents[0])) {
     config = contents[0] as Partial<ExtraConfig> & WidgetConfig;
     contents.splice(0, 1);
@@ -1020,7 +1207,7 @@ const Widget = Var.newType({
 });
 type _WidgetConstructorOptions =
   | Partial<OmitToNever<WidgetLit, `htmlTag` | `contents`>>
-  | WidgetContent;
+  | OldWidgetContent;
 
 //
 //
@@ -1046,15 +1233,34 @@ const createTextNode = (str: Str) => {
   doOnChange(() => (newTextNode.textContent = Var.toLit(str)), str);
   return newTextNode;
 };
+function htmlToHtml({
+  contents = 0 as Lit<HtmlNode>,
+  parent = _defaultWidget as Lit<Widget>,
+}): _ContentCompilationResults {
+  try {
+    return {
+      htmlElements: [contents],
+      widthGrows: false,
+      heightGrows: false,
+    };
+  } catch (e) {
+    return {
+      htmlElements: [],
+      widthGrows: false,
+      heightGrows: false,
+    };
+  }
+}
 _addNewContentCompiler({
   isThisType: HtmlNode.isLit,
-  compile: (params: {
-    contents: Lit<HtmlNode>;
-  }): _ContentCompilationResults => ({
-    htmlElements: [params.contents],
-    widthGrows: false,
-    heightGrows: false,
-  }),
+  compile: ({
+    contents = 0 as Lit<HtmlNode>,
+    parent = _defaultWidget as Lit<Widget>,
+  }) =>
+    htmlToHtml({
+      contents,
+      parent,
+    }),
 });
 
 //
@@ -1067,20 +1273,16 @@ _addNewContentCompiler({
 type Icon<P extends VarPerms = R> = Type<P, typeof Icon>;
 const Icon = Var.newType({
   is: (x) => exists((x as any)?.icon),
-  construct: (v: { icon: string; toString: () => string }) => v,
+  construct: (v: IconLit) => v,
   ..._iconsObj,
 });
-_addNewContentCompiler({
-  isThisType: (x) => Var.toLit(Icon.is(x)),
-  compile: function (params: {
-    contents: Lit<Icon>;
-    parent: Lit<Widget>;
-  }): _ContentCompilationResults {
+function iconToHtml({
+  contents = _iconsObj.abc as Lit<Icon>,
+  parent = _defaultWidget as Lit<Widget>,
+}): _ContentCompilationResults {
+  try {
     const textNode = document.createTextNode(``);
-    doOnChange(
-      (x) => (textNode.nodeValue = x.toString()),
-      params.contents.icon,
-    );
+    doOnChange((x) => (textNode.nodeValue = x.toString()), contents.icon);
     return {
       htmlElements: [
         createHtmlElement({
@@ -1089,23 +1291,23 @@ _addNewContentCompiler({
           style: {
             cursor: `default`,
             width: ifel(
-              Num.is(params.parent.textSize),
-              numToIconSize(params.parent.textSize as Num),
-              params.parent.textSize as Str,
+              Num.is(parent.textSize),
+              numToIconSize(parent.textSize as Num),
+              parent.textSize as Str,
             ),
             height: ifel(
-              Num.is(params.parent.textSize),
-              numToIconSize(params.parent.textSize as Num),
-              params.parent.textSize as Str,
+              Num.is(parent.textSize),
+              numToIconSize(parent.textSize as Num),
+              parent.textSize as Str,
             ),
-            color: params.parent.textColor,
+            color: parent.textColor,
             display: `inline-block`,
             verticalAlign: `middle`,
             textAlign: `center`,
             fontSize: ifel(
-              Num.is(params.parent.textSize),
-              numToIconSize(params.parent.textSize as Num),
-              params.parent.textSize as Str,
+              Num.is(parent.textSize),
+              numToIconSize(parent.textSize as Num),
+              parent.textSize as Str,
             ),
           },
           content: textNode,
@@ -1114,7 +1316,24 @@ _addNewContentCompiler({
       widthGrows: false,
       heightGrows: false,
     };
-  },
+  } catch (e) {
+    return {
+      htmlElements: [],
+      widthGrows: false,
+      heightGrows: false,
+    };
+  }
+}
+_addNewContentCompiler({
+  isThisType: (x) => Var.toLit(Icon.is(x)),
+  compile: ({
+    contents = _iconsObj.abc as Lit<Icon>,
+    parent = _defaultWidget as Lit<Widget>,
+  }) =>
+    iconToHtml({
+      contents,
+      parent,
+    }),
 });
 
 /** @About converts from standard Moa units to a size that makes sense for icons. */
@@ -1127,32 +1346,49 @@ const numToIconSize = (num: Num) => sizeToCss(mul(0.9, num));
 //
 
 // SECTION: Content Literals
+function primativeToHtml({
+  contents = 0 as string | number | boolean,
+  parent = _defaultWidget as Lit<Widget>,
+}): _ContentCompilationResults {
+  try {
+    return {
+      widthGrows: false,
+      heightGrows: false,
+      htmlElements: [
+        //document.createTextNode(params.contents.toString()),
+        createHtmlElement({
+          // Use `a` when this is a link
+          tag: `p`,
+          style: {
+            ...textStyleToCss({ widget: parent }),
+            margin: 0,
+            padding: 0,
+          },
+          href: parent.href,
+          content: computed(
+            () => document.createTextNode(Var.toLit(contents).toString()),
+            [contents],
+          ),
+        }),
+      ],
+    };
+  } catch (e) {
+    return {
+      htmlElements: [],
+      widthGrows: false,
+      heightGrows: false,
+    };
+  }
+}
 _addNewContentCompiler({
-  isThisType: (contents: WidgetContent) =>
+  isThisType: (contents: OldWidgetContent) =>
     Var.toLit(Str.is(contents)) ||
     Var.toLit(Num.is(contents)) ||
     Var.toLit(Bool.is(contents)),
-  compile: (params: {
-    contents: string | number | boolean;
-    parent: Lit<Widget>;
-  }) => ({
-    widthGrows: false,
-    heightGrows: false,
-    htmlElements: [
-      //document.createTextNode(params.contents.toString()),
-      createHtmlElement({
-        // Use `a` when this is a link
-        tag: `p`,
-        style: {
-          ...testStyleToCss({ widget: params.parent }),
-          margin: 0,
-          padding: 0,
-        },
-        href: params.parent.href,
-        content: document.createTextNode(params.contents.toString()),
-      }),
-    ],
-  }),
+  compile: ({
+    contents = 0 as string | number | boolean,
+    parent = _defaultWidget as Lit<Widget>,
+  }) => primativeToHtml({ contents, parent }),
 });
 
 //

@@ -305,21 +305,24 @@ const computed = function <T extends NotVar>(
     const onChange = OnChange();
     let oldPropOnChange: OnChange | undefined = undefined;
     const trypUpdateCachedVal = () => {
-      const newVal = compute();
-      // Ideally, we don't want to trigger the onChange event unless something has actually changed.
-      if (!haveCachedVal || cachedVal !== newVal) {
-        if (exists(oldPropOnChange)) {
-          oldPropOnChange.removeListener(onChange.trigger);
-          oldPropOnChange = undefined;
+      // Because "ifel" isn't actually conditional, this might fail on type unions.
+      try {
+        const newVal = compute();
+        // Ideally, we only want to trigger the onChange event when the value has actually changed.
+        if (!haveCachedVal || cachedVal !== newVal) {
+          if (exists(oldPropOnChange)) {
+            oldPropOnChange.removeListener(onChange.trigger);
+            oldPropOnChange = undefined;
+          }
+          cachedVal = Var.toLit(newVal);
+          haveCachedVal = true;
+          if (Var.isVar(newVal)) {
+            newVal.onChange.addListener(onChange.trigger);
+            oldPropOnChange = newVal.onChange;
+          }
+          onChange.trigger();
         }
-        cachedVal = Var.toLit(newVal);
-        haveCachedVal = true;
-        if (Var.isVar(newVal)) {
-          newVal.onChange.addListener(onChange.trigger);
-          oldPropOnChange = newVal.onChange;
-        }
-        onChange.trigger();
-      }
+      } catch (e) {}
     };
     for (const t of normalizedTriggers) t.addListener(trypUpdateCachedVal);
     return Var.fromFuncs<R, T>({
