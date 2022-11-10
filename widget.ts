@@ -721,10 +721,10 @@ const Sides = callable({
     vertical = 0 as T,
   }) =>
     Var<P, Lit<Sides<T, P>>>({
-      left: vertical,
-      top: horizontal,
-      right: vertical,
-      bottom: horizontal,
+      left: horizontal,
+      top: vertical,
+      right: horizontal,
+      bottom: vertical,
     }),
 
   all: <T extends VarOrLit<R, NotVar>, P extends R | RW = RW>(allSides: T) =>
