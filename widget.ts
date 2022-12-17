@@ -263,6 +263,10 @@ _addNewContentCompiler({
   }) => listToHtml({ contents, parent }),
 });
 
+const testFunc = ({
+  test = "" as Str
+}) => console.log("Test");
+
 /** @About Since we don't have access to JSX or React, we use this instead as a short hand
  * for creating HTML elements. */
 function createHtmlElement(params: {
