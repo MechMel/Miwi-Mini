@@ -10,23 +10,28 @@ const link = ({
   url = `tke.us`,
   postText = ``,
   isDowloadLink = false,
-}) => createHtmlElement({
-  tag: `p`,
-  style: {
-    padding: 0,
-    margin: 0,
-  },
-  content: [
-    createTextNode(preText + " "),
-    createHtmlElement({
-      tag: `a`,
-      href: url,
-      target: isDowloadLink ? "_blank" : "",
-      content: createTextNode(linkText),
-    }),
-    createTextNode(" " + postText),
-  ],
-});
+}) =>
+  createHtmlElement({
+    tag: `p`,
+    style: {
+      padding: 0,
+      margin: 0,
+    },
+    content: [
+      createTextNode(preText + " "),
+      createHtmlElement({
+        tag: `a`,
+        href: url,
+        target: isDowloadLink ? "_blank" : "",
+        content: createTextNode(linkText),
+        style: {
+          color: ifel(equ(url, ``), `#999999`, ""),
+          textDecoration: ifel(equ(url, ``), `line-through`, ``),
+        },
+      }),
+      createTextNode(" " + postText),
+    ],
+  });
 
 /** @About Describes a card. */
 const card = Widget.template({
